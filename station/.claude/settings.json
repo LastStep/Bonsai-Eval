@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/scope-guard-files.sh\" \"$r\"'"
+            "command": "bash \"/home/rohan/ZenGarden/Bonsai-Eval/station/agent/Sensors/scope-guard-files.sh\" \"/home/rohan/ZenGarden/Bonsai-Eval\""
           }
         ],
         "matcher": "Edit|Write"
@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/scope-guard-commands.sh\" \"$r\"'"
+            "command": "bash \"/home/rohan/ZenGarden/Bonsai-Eval/station/agent/Sensors/scope-guard-commands.sh\" \"/home/rohan/ZenGarden/Bonsai-Eval\""
           }
         ],
         "matcher": "Bash"
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/dispatch-guard.sh\" \"$r\"'"
+            "command": "bash \"/home/rohan/ZenGarden/Bonsai-Eval/station/agent/Sensors/dispatch-guard.sh\" \"/home/rohan/ZenGarden/Bonsai-Eval\""
           }
         ],
         "matcher": "Agent"
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/session-context.sh\" \"$r\"'"
+            "command": "bash \"/home/rohan/ZenGarden/Bonsai-Eval/station/agent/Sensors/session-context.sh\" \"/home/rohan/ZenGarden/Bonsai-Eval\""
           }
         ],
         "matcher": "startup|resume|clear"
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/subagent-stop-review.sh\" \"$r\"'"
+            "command": "bash \"/home/rohan/ZenGarden/Bonsai-Eval/station/agent/Sensors/subagent-stop-review.sh\" \"/home/rohan/ZenGarden/Bonsai-Eval\""
           }
         ]
       }
