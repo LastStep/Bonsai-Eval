@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/scope-guard-files.sh\" \"$r\"'"
+          }
+        ],
+        "matcher": "Edit|Write"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/scope-guard-commands.sh\" \"$r\"'"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/dispatch-guard.sh\" \"$r\"'"
+          }
+        ],
+        "matcher": "Agent"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/session-context.sh\" \"$r\"'"
+          }
+        ],
+        "matcher": "startup|resume|clear"
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'r=\"$PWD\"; while [ \"$r\" != \"/\" ] \u0026\u0026 [ ! -f \"$r/.bonsai.yaml\" ]; do r=$(dirname \"$r\"); done; bash \"$r/station/agent/Sensors/subagent-stop-review.sh\" \"$r\"'"
+          }
+        ]
+      }
+    ]
+  }
+}

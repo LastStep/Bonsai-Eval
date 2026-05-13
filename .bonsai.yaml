@@ -1,0 +1,34 @@
+project_name: Bonsai-Eval
+description: Empirical eval harness for Bonsai's scaffolding value-add — Plan 38 P0+P1+P2.
+docs_path: station/
+scaffolding:
+    - index
+    - playbook
+    - logs
+    - reports
+agents:
+    tech-lead:
+        agent_type: tech-lead
+        workspace: station/
+        skills:
+            - planning-template
+            - issue-classification
+            - dispatch
+            - review-checklist
+            - bonsai-model
+        workflows:
+            - issue-to-implementation
+            - planning
+            - code-review
+            - session-logging
+        protocols:
+            - session-start
+            - security
+            - scope-boundaries
+        sensors:
+            - session-context
+            - scope-guard-files
+            - scope-guard-commands
+            - dispatch-guard
+            - subagent-stop-review
+        routines: []

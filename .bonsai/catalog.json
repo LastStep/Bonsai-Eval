@@ -1,0 +1,565 @@
+{
+  "version": "dev",
+  "agents": [
+    {
+      "name": "backend",
+      "display_name": "Backend Agent",
+      "description": "Executes backend plans — API, database, server-side logic"
+    },
+    {
+      "name": "devops",
+      "display_name": "DevOps Agent",
+      "description": "Manages infrastructure-as-code, CI/CD pipelines, containers, and deployment automation"
+    },
+    {
+      "name": "frontend",
+      "display_name": "Frontend Agent",
+      "description": "Executes frontend plans — UI components, state management, styling"
+    },
+    {
+      "name": "fullstack",
+      "display_name": "Full-Stack Agent",
+      "description": "Implements full-stack features end-to-end — UI, API routes, database, auth, tests"
+    },
+    {
+      "name": "security",
+      "display_name": "Security Agent",
+      "description": "Audits code for vulnerabilities, reviews auth patterns, scans dependencies, enforces security standards"
+    },
+    {
+      "name": "tech-lead",
+      "display_name": "Tech Lead Agent",
+      "description": "Architects the system, writes plans, reviews agent output — never writes application code"
+    }
+  ],
+  "skills": [
+    {
+      "name": "api-design-standards",
+      "display_name": "API Design Standards",
+      "description": "REST API design conventions — URLs, methods, errors, pagination, versioning",
+      "agents": [
+        "backend",
+        "fullstack",
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "auth-patterns",
+      "display_name": "Auth Patterns",
+      "description": "Authentication and authorization patterns — flows, tokens, passwords, sessions, access control",
+      "agents": [
+        "backend",
+        "fullstack",
+        "security"
+      ]
+    },
+    {
+      "name": "bonsai-model",
+      "display_name": "Bonsai Mental Model",
+      "description": "How Bonsai structures an agent workspace — catalog, abilities, scaffolding, and customization decisions. Load when reasoning about adding/removing abilities, creating custom items, or explaining Bonsai concepts to the user.",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "cli-conventions",
+      "display_name": "CLI Conventions",
+      "description": "CLI design conventions — structure, flags, output, exit codes, configuration",
+      "agents": [
+        "backend",
+        "fullstack"
+      ]
+    },
+    {
+      "name": "coding-standards",
+      "display_name": "Coding Standards",
+      "description": "Language-specific coding standards — formatting, linting, patterns",
+      "agents": [
+        "backend",
+        "devops",
+        "frontend",
+        "fullstack",
+        "security"
+      ]
+    },
+    {
+      "name": "container-standards",
+      "display_name": "Container Standards",
+      "description": "Container and orchestration standards — Docker multi-stage builds, image security, Kubernetes manifests",
+      "agents": [
+        "devops"
+      ]
+    },
+    {
+      "name": "database-conventions",
+      "display_name": "Database Conventions",
+      "description": "SQL naming, migration patterns, schema design rules",
+      "agents": [
+        "backend",
+        "fullstack",
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "design-guide",
+      "display_name": "Design Guide",
+      "description": "Bonsai CLI design system — palette, spacing, panels, errors, command flow",
+      "agents": [
+        "tech-lead",
+        "backend",
+        "frontend",
+        "fullstack"
+      ]
+    },
+    {
+      "name": "dispatch",
+      "display_name": "Dispatch",
+      "description": "How to dispatch work to code agents — triage rules, prompt structure, iteration tracking",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "iac-conventions",
+      "display_name": "IaC Conventions",
+      "description": "Infrastructure-as-code conventions — Terraform naming, state management, modules, tagging",
+      "agents": [
+        "devops"
+      ]
+    },
+    {
+      "name": "issue-classification",
+      "display_name": "Issue Classification",
+      "description": "Issue types, importance levels, domain labels, and classification heuristics",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "mobile-patterns",
+      "display_name": "Mobile Patterns",
+      "description": "Mobile development patterns — state management, offline-first, navigation, performance",
+      "agents": [
+        "fullstack"
+      ]
+    },
+    {
+      "name": "planning-template",
+      "display_name": "Planning Template",
+      "description": "Plan format, tier rules, and template for writing implementation plans",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "pr-creation",
+      "display_name": "PR Creation",
+      "description": "How to create well-structured pull requests — branch naming, title conventions, body template, draft workflow",
+      "agents": [
+        "tech-lead",
+        "fullstack",
+        "backend",
+        "frontend"
+      ]
+    },
+    {
+      "name": "review-checklist",
+      "display_name": "Review Checklist",
+      "description": "Structured code review checklist — correctness, security, performance, maintainability",
+      "agents": [
+        "security",
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "test-strategy",
+      "display_name": "Test Strategy",
+      "description": "Test architecture — which tests to write, when, and why; pyramid, coverage, anti-patterns",
+      "agents": [
+        "backend",
+        "frontend",
+        "fullstack"
+      ]
+    },
+    {
+      "name": "testing",
+      "display_name": "Testing",
+      "description": "Testing conventions — frameworks, patterns, coverage requirements",
+      "agents": [
+        "backend",
+        "frontend",
+        "fullstack",
+        "security"
+      ]
+    },
+    {
+      "name": "workspace-guide",
+      "display_name": "Workspace Guide",
+      "description": "Bonsai workspace operational guide — how to use workflows, skills, routines, sensors, and the Playbook effectively",
+      "agents": [
+        "all"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "api-development",
+      "display_name": "API Development",
+      "description": "Spec-first API development — define contract, generate scaffolding, implement, test, document",
+      "agents": [
+        "backend",
+        "fullstack"
+      ]
+    },
+    {
+      "name": "code-review",
+      "display_name": "Code Review",
+      "description": "Review agent output against the plan — correctness, standards, security",
+      "agents": [
+        "security",
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "issue-to-implementation",
+      "display_name": "Issue to Implementation",
+      "description": "End-to-end autonomous workflow — issue intake, analysis, research, planning, agent dispatch, review loop, logging, audit, and close",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "plan-execution",
+      "display_name": "Plan Execution",
+      "description": "Execute an assigned plan step by step — implement, test, report",
+      "agents": [
+        "backend",
+        "devops",
+        "frontend",
+        "fullstack"
+      ]
+    },
+    {
+      "name": "planning",
+      "display_name": "Planning",
+      "description": "End-to-end planning process — from request to dispatch-ready plan",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "pr-review",
+      "display_name": "PR Review",
+      "description": "Review a pull request — context, scope, correctness, security, performance, standards",
+      "agents": [
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "reporting",
+      "display_name": "Reporting",
+      "description": "Completion report format — what was done, tested, issues encountered",
+      "agents": [
+        "backend",
+        "devops",
+        "frontend",
+        "fullstack",
+        "security"
+      ]
+    },
+    {
+      "name": "security-audit",
+      "display_name": "Security Audit",
+      "description": "Security audit — secrets scan, dependency audit, SAST, config review, access control, infrastructure",
+      "agents": [
+        "devops",
+        "security",
+        "tech-lead"
+      ]
+    },
+    {
+      "name": "session-logging",
+      "display_name": "Session Logging",
+      "description": "End-of-session log — what was done, decisions made, open items",
+      "agents": [
+        "all"
+      ]
+    },
+    {
+      "name": "test-plan",
+      "display_name": "Test Plan",
+      "description": "Design a structured test plan for a feature — scope, prioritize, allocate test types",
+      "agents": [
+        "tech-lead"
+      ]
+    }
+  ],
+  "protocols": [
+    {
+      "name": "memory",
+      "display_name": "Memory",
+      "description": "How to read, write, and maintain working memory between sessions",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ]
+    },
+    {
+      "name": "scope-boundaries",
+      "display_name": "Scope Boundaries",
+      "description": "What you own, what you never touch, workspace boundaries",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ]
+    },
+    {
+      "name": "security",
+      "display_name": "Security",
+      "description": "Security enforcement — hard stops and hard enforcers",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ]
+    },
+    {
+      "name": "session-start",
+      "display_name": "Session Start",
+      "description": "Ordered startup sequence — what to read and check every session",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "agent-review",
+      "display_name": "Agent Review",
+      "description": "Outputs a review checklist after a dispatched agent completes work",
+      "agents": [
+        "tech-lead"
+      ],
+      "event": "PostToolUse",
+      "matcher": "Agent"
+    },
+    {
+      "name": "api-security-check",
+      "display_name": "API Security Check",
+      "description": "Detects security anti-patterns in code changes — SQL injection, hardcoded secrets, eval, CORS wildcards",
+      "agents": [
+        "backend",
+        "fullstack",
+        "security"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Edit|Write"
+    },
+    {
+      "name": "compact-recovery",
+      "display_name": "Compact Recovery",
+      "description": "Re-injects minimal context after /compact (Quick Triggers + Work State only)",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ],
+      "event": "SessionStart",
+      "matcher": "compact"
+    },
+    {
+      "name": "context-guard",
+      "display_name": "Context Guard",
+      "description": "Injects context-aware behavioral constraints and detects session wrap-up trigger words before each prompt",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ],
+      "event": "UserPromptSubmit"
+    },
+    {
+      "name": "dispatch-guard",
+      "display_name": "Dispatch Guard",
+      "description": "Validates code agent dispatches — requires worktree isolation, plan reference, and plan existence before execution",
+      "agents": [
+        "tech-lead"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Agent"
+    },
+    {
+      "name": "iac-safety-guard",
+      "display_name": "IaC Safety Guard",
+      "description": "Blocks dangerous infrastructure commands — terraform destroy, kubectl delete namespace, unsafe docker ops",
+      "agents": [
+        "devops"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Bash"
+    },
+    {
+      "name": "routine-check",
+      "display_name": "Routine Check",
+      "description": "Checks routine dashboard at session start and flags overdue maintenance routines",
+      "agents": [
+        "all"
+      ],
+      "event": "SessionStart"
+    },
+    {
+      "name": "scope-guard-commands",
+      "display_name": "Scope Guard Commands",
+      "description": "Blocks agent from running application execution commands (tests, builds, servers)",
+      "agents": [
+        "security",
+        "tech-lead"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Bash"
+    },
+    {
+      "name": "scope-guard-files",
+      "display_name": "Scope Guard Files",
+      "description": "Blocks agent from editing files outside its workspace",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Edit|Write"
+    },
+    {
+      "name": "session-context",
+      "display_name": "Session Context",
+      "description": "Injects core identity, memory, protocols, and project status at session start",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ],
+      "event": "SessionStart",
+      "matcher": "startup|resume|clear"
+    },
+    {
+      "name": "status-bar",
+      "display_name": "Status Bar",
+      "description": "Persistent status line showing context usage, session health, and git state after every response",
+      "agents": [
+        "all"
+      ],
+      "required": [
+        "all"
+      ],
+      "event": "Stop"
+    },
+    {
+      "name": "subagent-stop-review",
+      "display_name": "Subagent Stop Review",
+      "description": "Outputs a structured review checklist when a dispatched agent finishes work",
+      "agents": [
+        "tech-lead"
+      ],
+      "event": "SubagentStop"
+    },
+    {
+      "name": "test-integrity-guard",
+      "display_name": "Test Integrity Guard",
+      "description": "Detects test quality issues — removed assertions, .skip/.only, empty test bodies, debug artifacts",
+      "agents": [
+        "backend",
+        "frontend",
+        "fullstack"
+      ],
+      "event": "PreToolUse",
+      "matcher": "Edit|Write"
+    }
+  ],
+  "routines": [
+    {
+      "name": "backlog-hygiene",
+      "display_name": "Backlog Hygiene",
+      "description": "Review and maintain Playbook/Backlog.md — flag stale items, escalate P0s, cross-reference with Status and Roadmap",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "7 days"
+    },
+    {
+      "name": "dependency-audit",
+      "display_name": "Dependency Audit",
+      "description": "Scan dependencies for known vulnerabilities and unmaintained packages",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "7 days"
+    },
+    {
+      "name": "doc-freshness-check",
+      "display_name": "Doc Freshness Check",
+      "description": "Detect documentation drift — docs that are stale relative to recent code changes",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "7 days"
+    },
+    {
+      "name": "infra-drift-check",
+      "display_name": "Infra Drift Check",
+      "description": "Detect infrastructure drift — compare declared IaC state against actual cloud resources",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "7 days"
+    },
+    {
+      "name": "memory-consolidation",
+      "display_name": "Memory Consolidation",
+      "description": "Bridge Claude Code auto-memory into agent/Core/memory.md — validate facts, clean redundant entries",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "5 days"
+    },
+    {
+      "name": "roadmap-accuracy",
+      "display_name": "Roadmap Accuracy",
+      "description": "Ensure Playbook/Roadmap.md reflects what's actually built and what's actually next",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "14 days"
+    },
+    {
+      "name": "status-hygiene",
+      "display_name": "Status Hygiene",
+      "description": "Keep Playbook/Status.md clean — archive old Done items, validate Pending items",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "5 days"
+    },
+    {
+      "name": "vulnerability-scan",
+      "display_name": "Vulnerability Scan",
+      "description": "SAST scan, secrets scan, and dependency audit — flag new, resolved, and persistent vulnerabilities",
+      "agents": [
+        "tech-lead"
+      ],
+      "frequency": "7 days"
+    }
+  ]
+}

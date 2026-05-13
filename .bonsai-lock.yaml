@@ -1,0 +1,113 @@
+version: 1
+files:
+    station/.claude/settings.json:
+        hash: 00f2461b606767ecf63f9e1702e531e9d5b0567c80bd2e96efc2eaeeeaf2927e
+        source: generated:settings-json
+    station/.claude/skills/code-review/SKILL.md:
+        hash: 939cd0430c87aeefac3bf7491911581d6e924f22a53878aa0462b273fb2aeb3f
+        source: generated:skill-workflow-code-review
+    station/.claude/skills/issue-to-implementation/SKILL.md:
+        hash: f3940c2a45fb8cea06a28b7e8094bb4cbdbf819b370e939e9b08f1ec36732955
+        source: generated:skill-workflow-issue-to-implementation
+    station/.claude/skills/planning/SKILL.md:
+        hash: 5dc0ac624d77d585b89ddddffc513c579ca3400e61e69495f23aeee26748eb1c
+        source: generated:skill-workflow-planning
+    station/CLAUDE.md:
+        hash: 9a59620389caea87210982ec09c13165cc381c017cd105cc79f1ba9cf8966875
+        source: generated:workspace-claude-md
+    station/INDEX.md:
+        hash: 91f3e7da06108987729bd5efa933639be2007e9b2c2858b4b6060fbe9cf0d37a
+        source: scaffolding:INDEX.md.tmpl
+    station/Logs/FieldNotes.md:
+        hash: 59819f1162cc2f62001c1b95a7df4507b364acdad82e44500f81add5b8f0b9fd
+        source: scaffolding:Logs/FieldNotes.md
+    station/Logs/KeyDecisionLog.md:
+        hash: a2db15dde8ed7c263a28239dd0eaf5bbd57c3b0bf9feb293f0351aa06d22dc76
+        source: scaffolding:Logs/KeyDecisionLog.md.tmpl
+    station/Logs/RoutineLog.md:
+        hash: 8e906feda3d86f36cf463ef3d138ca1d5ce190c33ad8cb419565fdd4257c11a3
+        source: scaffolding:Logs/RoutineLog.md
+    station/Playbook/Backlog.md:
+        hash: f8a193a1a0df87166cb2f15067b5e742d84b18f898170f824f09472cf7e04d72
+        source: scaffolding:Playbook/Backlog.md.tmpl
+    station/Playbook/Plans/Active/.gitkeep:
+        hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        source: scaffolding:Playbook/Plans/Active/.gitkeep
+    station/Playbook/Roadmap.md:
+        hash: c379b0d904d6cd1da01823557b18a111af8348918c62dbac64bbf37ee8a0ae95
+        source: scaffolding:Playbook/Roadmap.md.tmpl
+    station/Playbook/Standards/NoteStandards.md:
+        hash: 9152e54b8e64949de0233aa9a91efdcdac42136a97ff3da12454851258ba07c2
+        source: scaffolding:Playbook/Standards/NoteStandards.md.tmpl
+    station/Playbook/Standards/SecurityStandards.md:
+        hash: 48c8f5d58b815966610a2fbb1f3d5ab864f3a0817a3bda0903869f009107ee52
+        source: scaffolding:Playbook/Standards/SecurityStandards.md.tmpl
+    station/Playbook/Status.md:
+        hash: e119ac803d0f2a2fffc719d69acdcca27ba0bdf156d189cb7d2fce659eb52b24
+        source: scaffolding:Playbook/Status.md.tmpl
+    station/Reports/Pending/.gitkeep:
+        hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        source: scaffolding:Reports/Pending/.gitkeep
+    station/Reports/report-template.md:
+        hash: 66d87ee3da3e472e070d3a31b5765f837983f7e10ec810b9683cc0a3dcfea6be
+        source: scaffolding:Reports/report-template.md
+    station/agent/Core/identity.md:
+        hash: 0f6538a48fda48d9a146634dac070c74fe954535c63bfc3d32e0100a4c6fe261
+        source: catalog:core/identity.md
+    station/agent/Core/memory.md:
+        hash: 1d14f6460ca64fdcbfba0846868b898d898e755cd837e49cc1121e48bdb28514
+        source: catalog:core/memory.md
+    station/agent/Core/self-awareness.md:
+        hash: 9f6173c6afff39c6dd3511d93f794690b5823afc4752f7059392010bbb8c6893
+        source: catalog:core/self-awareness.md
+    station/agent/Protocols/scope-boundaries.md:
+        hash: b6170c7f7a8705c9beba6eb8c266e70535c9986c4d800201f28bd0abfab2ef7c
+        source: catalog:protocols/scope-boundaries
+    station/agent/Protocols/security.md:
+        hash: a696041f18ad86928536ff70a8caa5fac1d2875179d08dbf1371b541cc177c06
+        source: catalog:protocols/security
+    station/agent/Protocols/session-start.md:
+        hash: 2595618f103719a7f32e357aa99e4ef3ed90697b42c87b9f79e184b35631dbd7
+        source: catalog:protocols/session-start
+    station/agent/Sensors/dispatch-guard.sh:
+        hash: c1b7859714b9974a54f6a0d651af19ac7e79ac98c658eca7abe32203a6bde80d
+        source: catalog:sensors/dispatch-guard
+    station/agent/Sensors/scope-guard-commands.sh:
+        hash: c61067f1263624557e89096391ee48ac9218843613cbc351b7d6a6b5538b435d
+        source: catalog:sensors/scope-guard-commands
+    station/agent/Sensors/scope-guard-files.sh:
+        hash: 3110e7e7b9ba882f5191903afedf9d4eceabd2c9a7ab406a9e3486c50c033268
+        source: catalog:sensors/scope-guard-files
+    station/agent/Sensors/session-context.sh:
+        hash: 0e0f32a8a85b3348dd6ea0096ac9b1e14c599efe7b9b5ee36500118ac2cd1c2f
+        source: catalog:sensors/session-context
+    station/agent/Sensors/subagent-stop-review.sh:
+        hash: fbe7af0cf7e44cd475157ce60178a468cdab800a8ee54df4d2440f714a9100d4
+        source: catalog:sensors/subagent-stop-review
+    station/agent/Skills/bonsai-model.md:
+        hash: d45f8525becddb4ab3f3925908aa231127d1c5b66043a040e4425fd928cca2b0
+        source: catalog:skills/bonsai-model
+    station/agent/Skills/dispatch.md:
+        hash: aa3eee36c43953d90b0cf1c7847349875b75b79fb12540d1b1ec0a559c56ff7a
+        source: catalog:skills/dispatch
+    station/agent/Skills/issue-classification.md:
+        hash: dba6b57ccbfe4d96c54174a7956c7288ae31ae070d9187b95718ff043e25242a
+        source: catalog:skills/issue-classification
+    station/agent/Skills/planning-template.md:
+        hash: cd0cc3722d3cb9dd649c88efacd2f2380b9f5669655f63de8bc4313c0449ad86
+        source: catalog:skills/planning-template
+    station/agent/Skills/review-checklist.md:
+        hash: 625640f21338b111946f91019d261b0ddfc5cf39073d3544cb00264b8728816c
+        source: catalog:skills/review-checklist
+    station/agent/Workflows/code-review.md:
+        hash: 4eb778a19778e10126113702c31951e8c9a553689ea86a67ca84a232cc3dda23
+        source: catalog:workflows/code-review
+    station/agent/Workflows/issue-to-implementation.md:
+        hash: cb11302661b936c048bed48b49d25ce7b339e683110468eee654dc0904ea4b16
+        source: catalog:workflows/issue-to-implementation
+    station/agent/Workflows/planning.md:
+        hash: b7dff38d1eda74f705b2cc8489f0f91fc50c3190d9b353c6fc83c5a6e830d450
+        source: catalog:workflows/planning
+    station/agent/Workflows/session-logging.md:
+        hash: e69bb9a18abf4d4fb1d4cbcbe1fc7ac3b49ded7947eb2df2fe02009b462e40c7
+        source: catalog:workflows/session-logging
