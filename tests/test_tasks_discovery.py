@@ -96,7 +96,7 @@ def _extract_sandbox_type(sandbox_spec: object) -> str:
 
 
 def test_sandbox_is_docker_for_every_rung() -> None:
-    """All three rungs must construct tasks with `sandbox="docker"`.
+    """All three rungs must map to `sandbox="docker"`.
 
     Regression test for the 2026-05-14 live-smoke `ProcessLookupError`:
     `inspect_swe.mini_swe_agent` (rung-1's drop-in) dispatches bash
@@ -105,18 +105,20 @@ def test_sandbox_is_docker_for_every_rung() -> None:
     sandbox raises at run-time. See `_sandbox_for_rung` for the gory
     details. The fix unifies all three rungs on Docker; this test pins
     that invariant.
+
+    Verified via `_sandbox_for_rung` directly rather than by constructing
+    each rung's solver — rung-3 (`rung3_bonsai`) checks for the `bonsai`
+    binary at solver-construction time, which CI runners don't have. The
+    sandbox is wired into the `Task` via `_sandbox_for_rung(rung)` in
+    `_task_for` (see `bonsai_behavioral.py`), so asserting on the helper
+    pins the same contract without provoking solver side effects.
+    `_task_for` itself is exercised end-to-end (with the default rung,
+    `rung2`) in `test_each_task_constructs_to_a_real_task_object`, which
+    confirms the helper's return value reaches `Task.sandbox`.
     """
-    # Use one scenario — `_sandbox_for_rung` doesn't depend on scenario id,
-    # so checking one is sufficient to pin the rung→sandbox mapping.
-    scenario_id = "audit-security-loads-security-skill"
-    fn = getattr(tasks_mod, scenario_id.replace("-", "_"))
     for rung in ("rung1", "rung2", "rung3"):
-        t = fn(rung=rung)
-        sb_type = _extract_sandbox_type(t.sandbox)
-        assert sb_type == "docker", (
-            f"{scenario_id} @ {rung}: expected sandbox='docker', "
-            f"got {t.sandbox!r} (type={sb_type!r})"
-        )
+        sb_type = _extract_sandbox_type(tasks_mod._sandbox_for_rung(rung))
+        assert sb_type == "docker", f"{rung}: expected sandbox='docker', got {sb_type!r}"
 
 
 def test_sandbox_for_rung_helper_rejects_unknown_rung() -> None:
