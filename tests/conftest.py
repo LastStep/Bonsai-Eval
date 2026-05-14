@@ -8,6 +8,13 @@ import sys
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# Load `.env` from the repo root before any test imports / fixtures run. We use
+# `override=False` so an already-exported shell env var wins. `load_dotenv`
+# silently no-ops when the file is absent — important because git worktrees do
+# not inherit gitignored files, so the `.env` may not exist in agent worktrees.
+load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
 
 def _build_joined_fixture(fixtures_dir: Path) -> None:

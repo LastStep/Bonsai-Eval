@@ -13,12 +13,19 @@ Methodology rationale (from online research, 2026-05-07):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, fields
 from typing import Any
 
 
 class PreregistrationViolation(RuntimeError):
     """Raised when a solver invocation does not match the active pre-registered config."""
+
+
+# PEP 440 / semver-ish: `MAJOR.MINOR.PATCH` with optional `-pre` or `+build` suffix.
+# We intentionally keep this permissive — the goal is "machine-checkable shape",
+# not full PEP 440 grammar. Drift detection comes from string-equality elsewhere.
+_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+].+)?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +35,16 @@ class PreregistrationConfig:
     Two `PreregistrationConfig` instances compare equal iff every field matches.
     Fields use immutable types (`str`, `int`, `float`, `frozenset`) so the
     `frozen=True` guarantee survives nested mutation attempts.
+
+    Field order (positional callers beware — kwargs are the supported pattern):
+        1. model
+        2. temperature
+        3. max_tokens
+        4. allowed_tools
+        5. judge_model
+        6. judge_prompt_sha256
+        7. mini_swe_agent_version  (rung-1 CLI semver, e.g. "2.2.3")
+        8. inspect_swe_version     (inspect-swe package semver, e.g. "0.2.51")
     """
 
     model: str
@@ -36,6 +53,8 @@ class PreregistrationConfig:
     allowed_tools: frozenset[str]
     judge_model: str
     judge_prompt_sha256: str
+    mini_swe_agent_version: str
+    inspect_swe_version: str
 
     def __post_init__(self) -> None:
         # Defensive type-narrowing — a caller passing a `set` instead of `frozenset`
@@ -51,6 +70,16 @@ class PreregistrationConfig:
             raise ValueError(f"temperature out of range: {self.temperature}")
         if self.max_tokens <= 0:
             raise ValueError(f"max_tokens must be positive: {self.max_tokens}")
+        if not _VERSION_RE.match(self.mini_swe_agent_version):
+            raise ValueError(
+                f"mini_swe_agent_version must be PEP 440 / semver-shaped "
+                f"(MAJOR.MINOR.PATCH[-pre|+build]), got {self.mini_swe_agent_version!r}"
+            )
+        if not _VERSION_RE.match(self.inspect_swe_version):
+            raise ValueError(
+                f"inspect_swe_version must be PEP 440 / semver-shaped "
+                f"(MAJOR.MINOR.PATCH[-pre|+build]), got {self.inspect_swe_version!r}"
+            )
 
 
 def assert_preregistration(cfg: PreregistrationConfig, expected: PreregistrationConfig) -> None:
@@ -96,4 +125,9 @@ ACTIVE_PREREGISTRATION = PreregistrationConfig(
     allowed_tools=frozenset({"Bash", "Read", "Edit", "Write", "Glob", "Grep"}),
     judge_model="anthropic/claude-haiku-4-5",
     judge_prompt_sha256=_PLACEHOLDER_JUDGE_PROMPT_SHA256,
+    # Solver-stack version pins — must equal the constants in
+    # `bonsai_eval.solvers.rungs`. Drift between these two locations is
+    # machine-enforced by `_validate_versions_match_preregistration`.
+    mini_swe_agent_version="2.2.3",
+    inspect_swe_version="0.2.51",
 )

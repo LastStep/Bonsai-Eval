@@ -6,7 +6,7 @@ help:
 	@echo "  install     uv sync (install/refresh deps from uv.lock)"
 	@echo "  test        pytest (non-API only — no key required)"
 	@echo "  test-api    pytest (API tests — requires ANTHROPIC_API_KEY)"
-	@echo "  lint        ruff check + mypy"
+	@echo "  lint        ruff check + ruff format --check + mypy"
 	@echo "  format      ruff format ."
 	@echo "  eval        inspect eval (placeholder — needs ANTHROPIC_API_KEY)"
 	@echo "  telemetry   run telemetry pipeline end-to-end"
@@ -23,6 +23,7 @@ test-api:
 
 lint:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy bonsai_eval
 
 format:
