@@ -97,12 +97,28 @@ def build_scorer(
     The returned scorer is a coroutine compatible with Inspect's `Scorer`
     protocol (`async def (state, target) -> Score`).
     """
-    workspace_root = workspace_root or Path.cwd()
-    baseline_hashes = baseline_hashes or {}
+    # NB: `workspace_root` / `baseline_hashes` are resolved per-call below.
+    # If the caller didn't pass them, we honour metadata stashed by the
+    # rung-3 setup solver (`bonsai_eval.solvers.rungs.rung3_setup_solver`)
+    # which writes `state.metadata['workspace_root' / 'baseline_hashes']`.
+    explicit_workspace_root = workspace_root
+    explicit_baseline_hashes = baseline_hashes
     client_factory = client_factory or _default_client_factory
 
     async def score(state: TaskState, target: Target) -> Score:
         del target  # SCHEMA.md scenarios don't use the Inspect `target` field.
+        meta = getattr(state, "metadata", None) or {}
+        effective_workspace_root: Path
+        if explicit_workspace_root is not None:
+            effective_workspace_root = explicit_workspace_root
+        elif "workspace_root" in meta:
+            effective_workspace_root = Path(meta["workspace_root"])
+        else:
+            effective_workspace_root = Path.cwd()
+        if explicit_baseline_hashes is not None:
+            effective_baseline_hashes = explicit_baseline_hashes
+        else:
+            effective_baseline_hashes = dict(meta.get("baseline_hashes") or {})
         details: list[dict[str, Any]] = []
         all_passed = True
 
@@ -119,13 +135,13 @@ def build_scorer(
                     passed, detail = evaluate_deterministic(
                         ev,
                         transcript=state,
-                        workspace_root=workspace_root,
-                        baseline_hashes=baseline_hashes,
+                        workspace_root=effective_workspace_root,
+                        baseline_hashes=effective_baseline_hashes,
                     )
                 elif etype == "test_based":
                     passed, detail = await evaluate_test_based(
                         ev,
-                        workspace_root=workspace_root,
+                        workspace_root=effective_workspace_root,
                     )
                 elif etype == "llm_judge":
                     passed, detail = evaluate_llm_judge(

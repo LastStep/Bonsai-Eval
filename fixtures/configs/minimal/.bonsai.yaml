@@ -1,0 +1,9 @@
+# Minimal tech-lead-only fixture for `bonsai init --non-interactive --from-config`.
+# Bonsai v0.4.2 `ProjectConfig` shape — `bonsai init` requires `agents.tech-lead`
+# (and rejects multi-agent overlays at init time, exit 2). Per-agent ability
+# lists are left empty so the agent.yaml defaults apply lenient-default-style
+# (see `internal/nonint/config.go:applyDefaults`).
+project_name: eval-rung3-sandbox
+docs_path: station/
+agents:
+  tech-lead: {}

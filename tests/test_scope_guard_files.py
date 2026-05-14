@@ -68,8 +68,7 @@ def test_guard_script_exists_and_is_executable() -> None:
 def test_edit_inside_station_is_allowed() -> None:
     result = _run_guard("station/foo.md")
     assert result.returncode == 0, (
-        f"expected allow under station/, got exit {result.returncode}; "
-        f"stderr: {result.stderr!r}"
+        f"expected allow under station/, got exit {result.returncode}; stderr: {result.stderr!r}"
     )
     assert result.stderr == ""
 
@@ -78,8 +77,7 @@ def test_edit_bonsai_yaml_is_allowed() -> None:
     """.bonsai.yaml is on the EXPLICIT_ALLOW list — tech-lead owns catalog state."""
     result = _run_guard(".bonsai.yaml")
     assert result.returncode == 0, (
-        f"expected allow for .bonsai.yaml, got exit {result.returncode}; "
-        f"stderr: {result.stderr!r}"
+        f"expected allow for .bonsai.yaml, got exit {result.returncode}; stderr: {result.stderr!r}"
     )
 
 

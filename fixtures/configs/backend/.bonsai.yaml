@@ -1,0 +1,10 @@
+# Backend-agent overlay fixture for `bonsai add --non-interactive --from-config`.
+# `bonsai init` only accepts a tech-lead at init time (exit 2 if multi-agent),
+# so the rung-3 solver bootstraps with `fixtures/configs/minimal/.bonsai.yaml`
+# first and then applies this overlay via `bonsai add`.
+#
+# Per `internal/nonint/runner.go:RunAdd`, an overlay must contain exactly one
+# agent entry. Ability lists are left empty so the agent.yaml defaults apply
+# (skills/workflows/protocols/sensors come from the catalog defaults).
+agents:
+  backend: {}
