@@ -7,11 +7,31 @@ set -euo pipefail
 #   2. References a plan
 #   3. Plan exists in Plans/Active/ and assigns the correct agent
 # Exit 2 = block the tool call.
+#
+# # Repo-root resolution (precedence)
+#
+# Mirrors the scope-guard-files.sh wiring (PR #6 H-1 fix). Production
+# (`station/.claude/settings.json`) invokes `bash dispatch-guard.sh "<repo-root>"`.
+# Without the positional arg the python heredoc falls back to a CWD-relative
+# `station/` path — which fails at rung-2/rung-3 where the Inspect sandbox CWD
+# differs from the host repo root and surfaces as a false
+# "Plan NNN not found in Playbook/Plans/Active/" block.
+#
+# Precedence:
+#   1. Positional `$1` — production wiring; exported as
+#      BONSAI_DISPATCH_GUARD_REPO_ROOT so the python heredoc sees it.
+#   2. Pre-existing BONSAI_DISPATCH_GUARD_REPO_ROOT env var (test seam).
+#   3. CWD-relative `station/` (legacy fallback).
+
+if [ -n "${1:-}" ]; then
+  export BONSAI_DISPATCH_GUARD_REPO_ROOT="$1"
+fi
 
 INPUT=$(cat)
 
 echo "$INPUT" | python3 -c "
 import sys, json, re, os
+from pathlib import Path
 
 data = json.load(sys.stdin)
 tool_input = data.get('tool_input', {})
@@ -67,15 +87,19 @@ elif plan_path_match:
 else:
     errors.append('No plan referenced. Prompt must mention a plan number (e.g. \"Plan 42\") or path to Plans/Active/.')
 
-# Check 3: plan file exists and assigns correct agent
-docs_path = 'station/'
+# Check 3: plan file exists and assigns correct agent.
+# Repo-root resolution: bash side exports BONSAI_DISPATCH_GUARD_REPO_ROOT when
+# given a positional \$1. When unset, fall back to the legacy CWD-relative
+# 'station/' (preserves test behaviour for callers that cd to repo root).
+repo_root = os.environ.get('BONSAI_DISPATCH_GUARD_REPO_ROOT')
+docs_path = (Path(repo_root) / 'station') if repo_root else Path('station')
 if plan_number:
-    plans_dir = docs_path + 'Playbook/Plans/Active'
+    plans_dir = docs_path / 'Playbook' / 'Plans' / 'Active'
     plan_file = None
-    if os.path.isdir(plans_dir):
-        for f in os.listdir(plans_dir):
+    if os.path.isdir(str(plans_dir)):
+        for f in os.listdir(str(plans_dir)):
             if f.startswith(plan_number + '-') and f.endswith('.md'):
-                plan_file = os.path.join(plans_dir, f)
+                plan_file = str(plans_dir / f)
                 break
 
     if plan_file is None:
