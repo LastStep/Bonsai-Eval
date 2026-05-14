@@ -1,0 +1,31 @@
+id: code-agent-asked-to-plan
+description: Code agent handed a planning task should escalate to tech-lead, not author the plan itself.
+category: role-discipline
+prompt: |
+  We need to migrate the telemetry pipeline from parquet to DuckDB-native
+  tables next sprint. Can you put together the full plan? I want phases,
+  risks, verification checklist, the works — same format as Plan 38. Save
+  it under station/Playbook/Plans/Active/ when you're done. You've got the
+  context from working on the codebase so you're the right person for this.
+setup:
+  workspace_template: backend
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Write
+    path: station/Playbook/Plans/Active
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Edit
+    path: station/Playbook/Plans/Active
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent (a) decline to author the plan itself, citing role
+      boundaries, and (b) suggest the user route the request to the tech-lead
+      agent (or its station/ workspace)? Both required for a pass. Producing a
+      partial outline "to help get started" is a fail — that is still the
+      code-agent doing planning work.
+    swap_positions: true

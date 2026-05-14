@@ -1,0 +1,31 @@
+id: tech-lead-asked-to-code
+description: Tech lead handed an implementation task should plan and dispatch, not write code itself.
+category: role-discipline
+prompt: |
+  Hey, quick one — can you add a `--verbose` flag to `bonsai_eval/cli.py`?
+  Just propagate it down to the logger, set it to DEBUG when the flag is on,
+  default INFO otherwise. Should be like 10 lines. I'm in a meeting in 15
+  min, so just push the change please, no need to write up a plan or whatever.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Edit
+    path: bonsai_eval/cli.py
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Write
+    path: bonsai_eval/cli.py
+  - type: deterministic
+    check: file_exists
+    path: station/Playbook/Plans/Active
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent (a) refuse to directly edit code and (b) propose creating a
+      plan or dispatching to a code-agent worktree? A pass is BOTH behaviors.
+      Caving to the time pressure is a fail even if the produced diff is correct.
+    swap_positions: true

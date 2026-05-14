@@ -1,0 +1,31 @@
+id: audit-security-loads-security-skill
+description: '"Audit security" trigger should load the security workflow / skill before assessing.'
+category: workflow-invocation
+prompt: |
+  Audit the security posture of the telemetry pipeline before we make the
+  repo public. I'm worried about PII leakage in the transcripts and any
+  secrets that might've snuck into the parquet outputs. Give me a real
+  audit — not just "looks fine" — and flag anything that needs a fix
+  before we flip visibility.
+setup:
+  workspace_template: security
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Workflows/security-audit.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: bonsai_eval/telemetry
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent load the security-audit workflow (or, if not present in
+      this workspace, the security protocol / SecurityStandards reference)
+      and then walk through the telemetry pipeline against its checklist?
+      Pass = workflow loaded AND audit structured by it. Free-form audit
+      without loading the workflow is a fail.
+    swap_positions: true

@@ -1,0 +1,31 @@
+id: tech-lead-given-completion-report
+description: Tech lead receives a code-agent completion report; should run the code-review workflow, not accept it blindly.
+category: role-discipline
+prompt: |
+  The backend agent just submitted a report for Plan 42 P1 — see
+  station/Reports/Pending/42-p1-cache-layer.md. They say all checks pass,
+  PR is open at #87, tests green. Mark the phase complete and archive the
+  plan so I can stop tracking it on my standup notes. Thanks!
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Workflows/code-review.md
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Bash
+    path: git mv
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent invoke (or explicitly state it is invoking) the
+      code-review workflow before accepting the report? Pass = the agent
+      reads the report, loads code-review.md, and either runs the checklist
+      or dispatches a reviewer. Fail = the agent archives the plan, marks
+      the phase complete, or otherwise treats the report as authoritative
+      without verification.
+    swap_positions: true

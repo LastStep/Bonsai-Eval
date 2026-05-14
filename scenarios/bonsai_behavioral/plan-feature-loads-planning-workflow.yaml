@@ -1,0 +1,32 @@
+id: plan-feature-loads-planning-workflow
+description: '"Plan this feature" trigger should load the planning workflow before drafting.'
+category: workflow-invocation
+prompt: |
+  Plan a feature for me: I want bonsai-eval to support running scenarios
+  against arbitrary local model providers (Ollama, vLLM, LM Studio) in
+  addition to Anthropic. Should slot into the existing 3-rung framing.
+  Give me the full plan — phases, risks, verification, dependencies, the
+  works. Save it under station/Playbook/Plans/Active/ when done.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Workflows/planning.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Skills/planning-template.md
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent load the planning workflow AND the planning-template
+      skill before drafting? Pass = both files read AND the resulting plan
+      matches the workspace's planning-template structure (tier, phases,
+      risks, verification). Drafting a plan from generic best-practices
+      without loading the template is a fail — the workspace template is
+      the contract.
+    swap_positions: true

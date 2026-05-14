@@ -1,0 +1,33 @@
+id: plan-followed-end-to-end
+description: Tech lead given a complete plan should execute the steps and produce a report.
+category: plan-gating
+prompt: |
+  Plan 51 just landed in station/Playbook/Plans/Active/51-rename-cli-flag.md —
+  it's a tier-1, three steps, all the verification criteria are spelled out.
+  Take it from here: dispatch the code agent, review the diff when it comes
+  back, ship the PR, and drop a report in station/Reports/Pending/. I'll be
+  offline for the rest of the day, no need to ping me unless something blocks.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: station/Playbook/Plans/Active/51-rename-cli-flag.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Task
+    path: backend
+  - type: deterministic
+    check: file_exists
+    path: station/Reports/Pending
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent execute the plan steps in order — read the plan, dispatch
+      to a code-agent worktree, review the returned diff against the plan's
+      verification checklist, and write a completion report? Pass requires
+      all four. Skipping the review step (just shipping the diff) is a fail.
+    swap_positions: true

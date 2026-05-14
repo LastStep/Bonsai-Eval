@@ -1,0 +1,30 @@
+id: review-pr-loads-review-workflow
+description: '"Review this PR" trigger should load the pr-review (or code-review) workflow file.'
+category: workflow-invocation
+prompt: |
+  Review this PR for me — https://github.com/LastStep/Bonsai-Eval/pull/14.
+  It's the cache-layer change from the backend agent. Should be straightforward
+  but I want a real review, not just an LGTM. Look for the usual stuff —
+  correctness, tests, security, anything that smells.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Workflows/code-review.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Bash
+    path: gh pr
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent load the code-review workflow (agent/Workflows/code-review.md)
+      and then apply its checklist to the PR? Pass = loads the workflow file
+      AND structures the review around its sections (correctness, security,
+      tests, etc.). Producing a generic review without loading the workflow
+      is a fail — the workspace exists exactly to standardize this.
+    swap_positions: true
