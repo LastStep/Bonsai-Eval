@@ -20,9 +20,14 @@ solver at task-construction time. Inspect AI's `inspect eval` forwards
 the task function, so a single `@task` definition covers all three rungs.
 
 Valid rung values:
-  - `"rung1"` → `rung1_raw_api` — raw-API mini-swe-agent (no sandbox needed)
+  - `"rung1"` → `rung1_raw_api` — raw-API mini-swe-agent (docker sandbox)
   - `"rung2"` → `rung2_bare_cc` — bare Claude Code (docker sandbox)
   - `"rung3"` → `rung3_bonsai`  — bare CC + Bonsai-materialized workspace
+
+All three rungs route bash through `inspect_ai.util.sandbox(...)`
+(mini-swe-agent calls `sbox.exec_remote` just like claude-code does), so
+every task is constructed with `sandbox="docker"`. See
+`_sandbox_for_rung` for the live-smoke regression that drove this.
 
 Per-`(scenario, rung, seed)` HOME / workspace isolation is the CALLER's
 responsibility — `scripts/run_validation.py` mints a unique `data/raw/runs/
@@ -163,8 +168,27 @@ def _solver_for_rung(
 
 
 def _sandbox_for_rung(rung: str) -> str | None:
-    """Rungs 2 + 3 need Docker; rung 1 does not."""
-    return None if rung == "rung1" else "docker"
+    """All three rungs need a Docker sandbox.
+
+    Rung-1's `inspect_swe.mini_swe_agent` drop-in resolves
+    `inspect_ai.util.sandbox(...)` at run-time and dispatches bash via
+    `sbox.exec_remote(...)` (see
+    `inspect_swe/_mini_swe_agent/mini_swe_agent.py:142`). Without a
+    sandbox declared on the `Task`, Inspect raises
+    `ProcessLookupError: No sandbox environment has been provided for
+    the current sample or task`. The P0.2 smoke `tests/test_substrate.py`
+    Case B works precisely because it builds the task with
+    `Task(sandbox="docker")` explicitly. Rungs 2 + 3 obviously need
+    Docker (their `inspect_swe.claude_code` drop-in does the same
+    sandbox-routed exec).
+
+    The previous gating (`None if rung == "rung1" else "docker"`)
+    surfaced as a live-smoke failure after P2.5 (2026-05-14); fix is to
+    return `"docker"` uniformly.
+    """
+    if rung not in VALID_RUNGS:
+        raise ValueError(f"unknown rung {rung!r}; expected one of {sorted(VALID_RUNGS)}")
+    return "docker"
 
 
 def _task_for(
