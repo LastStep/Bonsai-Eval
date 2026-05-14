@@ -82,6 +82,56 @@ def test_each_task_constructs_to_a_real_task_object() -> None:
         assert t.name == scenario_id
 
 
+def _extract_sandbox_type(sandbox_spec: object) -> str:
+    """Inspect's `Task(sandbox=...)` accepts a `str` or a `SandboxEnvironmentSpec`.
+
+    Constructing `Task(..., sandbox="docker")` produces a
+    `SandboxEnvironmentSpec(type="docker", ...)` on `Task.sandbox`. This
+    helper handles both shapes so we can assert on the type uniformly
+    without coupling the test to Inspect's internals.
+    """
+    if isinstance(sandbox_spec, str):
+        return sandbox_spec
+    return getattr(sandbox_spec, "type", "")
+
+
+def test_sandbox_is_docker_for_every_rung() -> None:
+    """All three rungs must map to `sandbox="docker"`.
+
+    Regression test for the 2026-05-14 live-smoke `ProcessLookupError`:
+    `inspect_swe.mini_swe_agent` (rung-1's drop-in) dispatches bash
+    through `inspect_ai.util.sandbox(...).exec_remote(...)` just like
+    `inspect_swe.claude_code` (rungs 2 + 3), so a `Task` built without a
+    sandbox raises at run-time. See `_sandbox_for_rung` for the gory
+    details. The fix unifies all three rungs on Docker; this test pins
+    that invariant.
+
+    Verified via `_sandbox_for_rung` directly rather than by constructing
+    each rung's solver — rung-3 (`rung3_bonsai`) checks for the `bonsai`
+    binary at solver-construction time, which CI runners don't have. The
+    sandbox is wired into the `Task` via `_sandbox_for_rung(rung)` in
+    `_task_for` (see `bonsai_behavioral.py`), so asserting on the helper
+    pins the same contract without provoking solver side effects.
+    `_task_for` itself is exercised end-to-end (with the default rung,
+    `rung2`) in `test_each_task_constructs_to_a_real_task_object`, which
+    confirms the helper's return value reaches `Task.sandbox`.
+    """
+    for rung in ("rung1", "rung2", "rung3"):
+        sb_type = _extract_sandbox_type(tasks_mod._sandbox_for_rung(rung))
+        assert sb_type == "docker", f"{rung}: expected sandbox='docker', got {sb_type!r}"
+
+
+def test_sandbox_for_rung_helper_rejects_unknown_rung() -> None:
+    """`_sandbox_for_rung` validates its input alongside `_solver_for_rung`."""
+    import pytest
+
+    assert tasks_mod._sandbox_for_rung("rung1") == "docker"
+    assert tasks_mod._sandbox_for_rung("rung2") == "docker"
+    assert tasks_mod._sandbox_for_rung("rung3") == "docker"
+    with pytest.raises(ValueError, match="unknown rung"):
+        tasks_mod._sandbox_for_rung("rung4")
+
+
 def test_scenarios_dir_resolves_to_repo_root() -> None:
     """Guard against import-time path miscomputation."""
     assert tasks_mod.SCENARIOS_DIR == REPO_ROOT / "scenarios" / "bonsai_behavioral"
