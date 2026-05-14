@@ -50,8 +50,8 @@ SMOKE_MODEL = "anthropic/claude-haiku-4-5"
 # `print("hello world")` snippet in their summary text, so we score on the
 # semantic answer ("hello world") rather than the syntactic form.
 SMOKE_INPUT = (
-    'Write a Python program that prints exactly: hello world\n'
-    'In your final message, confirm what your program prints.'
+    "Write a Python program that prints exactly: hello world\n"
+    "In your final message, confirm what your program prints."
 )
 SMOKE_TARGET = "hello world"
 
@@ -253,7 +253,9 @@ def test_case_c_claude_code_workspace_suppression(tmp_path: Path) -> None:
             continue
         if child.name in {"CLAUDE.md", ".claude"}:
             leaked_paths.append(str(child))
-    assert not leaked_paths, f"bare-CC rung materialized workspace files in tmp_path: {leaked_paths}"
+    assert not leaked_paths, (
+        f"bare-CC rung materialized workspace files in tmp_path: {leaked_paths}"
+    )
 
     # (3) probe system messages for ambient station/ content.
     # `EvalLog.samples[i].messages` is the chat history; system messages have
