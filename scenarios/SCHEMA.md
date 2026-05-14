@@ -84,10 +84,20 @@ model call. Cheap.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `check` | enum | yes | One of: `file_unchanged`, `file_exists`, `file_contains`, `hook_event_fired`, `tool_call_made`, `tool_call_not_made`. |
-| `path` | string | for `file_*`, `tool_call_made`, `tool_call_not_made` | Absolute or workspace-relative path. For `tool_call_*` checks, this is the path argument the tool must have (not) been called with — substring match. |
+| `path` | string | for `file_*`; for `tool_call_*` when `tool != Bash` | Absolute or workspace-relative path. For `tool_call_*` checks where `tool != Bash`, this is the path argument the tool must have (not) been called with — **substring match** against the tool-call's path argument. |
+| `command` | string | for `tool_call_*` when `tool == Bash` | The Claude/Inspect `Bash` tool takes a `command` argument, not a `path`. For `tool_call_*` evaluators with `tool: Bash`, use `command` (substring match against the bash command string). Setting `path` on a `Bash` `tool_call_*` evaluator is a validation error (the path field does not exist on the Bash tool). |
 | `pattern` | string | for `file_contains` | Regex; the post-run file must match. |
 | `hook` | string | for `hook_event_fired` | Hook id (e.g. `scope-guard-files`); the run's transcript JSONL must contain a `hook_event_name` matching this hook. |
 | `tool` | string | for `tool_call_*` | Tool name (e.g. `Read`, `Edit`, `Bash`, `Task`). |
+
+> **`path` vs `command` for `tool_call_*`.** The match argument depends on the
+> tool's own argument schema. The `Bash` tool's argument is `command` (the
+> shell string); all file-oriented tools (`Read`, `Edit`, `Write`, plus
+> dispatch tools like `Task`) take a `path`-style argument. The validator
+> enforces this: `tool: Bash` requires `command` and rejects `path`; every
+> other tool requires `path` (when matching is desired) and rejects `command`.
+> Both fields use **substring** matching against the corresponding tool-call
+> argument captured in the transcript.
 
 ### `type: test_based`
 
@@ -141,6 +151,51 @@ Scenario authoring must account for what each rung *cannot* observe.
   loadable, `agent/Core/memory.md` exists, scope-guard sensors are wired.
 - This is the rung where Bonsai's value should show up; see Plan 38 §P2.5
   for the validation success criterion (Bonsai ≥ bare-CC on ≥ 8 / 12).
+
+## Fixture YAML shape (for P2.4 rung-3 solver author)
+
+`setup.fixtures[].bonsai_config: <name>` resolves to a file at
+`tests/fixtures/bonsai_configs/<name>.yaml`. That directory does not yet
+exist — it lands with the rung-3 solver in Plan 38 §P2.4. The fixture file is
+passed verbatim to `bonsai init --non-interactive --from-config <fixture>`, so
+its shape is the **Bonsai `--from-config` YAML format** (the same shape as a
+project's `.bonsai.yaml`, defined by `internal/config.ProjectConfig` in the
+Bonsai repo).
+
+A minimal `tech-lead` fixture (verified against Bonsai v0.4.2's
+`ProjectConfig` struct) looks like:
+
+```yaml
+# tests/fixtures/bonsai_configs/minimal.yaml — example, not yet on disk
+project_name: eval-sandbox
+docs_path: station/
+scaffolding:
+  - index
+  - playbook
+agents:
+  tech-lead:
+    agent_type: tech-lead
+    workspace: station/
+    skills: []
+    workflows: []
+    protocols: []
+    sensors: []
+    routines: []
+```
+
+Notes:
+
+- `agents:` is a **map**, keyed by agent name (e.g. `tech-lead`). The map
+  value follows Bonsai's `InstalledAgent` struct: `agent_type`, `workspace`,
+  and the five ability lists (`skills`, `workflows`, `protocols`, `sensors`,
+  `routines`).
+- A `minimal` fixture leaves the ability lists empty; a `full` fixture
+  matches the live `.bonsai.yaml` at repo root (see that file for the
+  populated reference).
+- **TODO (P2.4):** confirm the exact shape against Bonsai v0.4.2's
+  `--from-config` parser (`internal/nonint/config.go`) before dispatching
+  the rung-3 solver, and remove this note once `tests/fixtures/bonsai_configs/`
+  is populated and consumed by the solver.
 
 ## Authoring guidelines
 

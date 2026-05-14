@@ -89,3 +89,71 @@ def test_check_script_runs_clean_on_starter_suite() -> None:
     """End-to-end: the validator script returns 0 against the bundled scenarios."""
     failures = CHECK.check_all(SCENARIOS_DIR)  # type: ignore[attr-defined]
     assert failures == [], f"check_scenarios reported failures: {failures}"
+
+
+def test_validator_rejects_bash_tool_call_with_path(tmp_path: Path) -> None:
+    """Review F1+F2: a `tool_call_*` evaluator with `tool: Bash` must use
+    `command`, not `path` — the Claude/Inspect Bash tool's argument is named
+    `command`. The validator must reject the `path` form so authors don't
+    write scenarios that look right but match nothing at runtime.
+    """
+    import yaml as _yaml  # local import — kept out of module globals
+
+    bad_scenario = {
+        "id": "bad-bash-uses-path",
+        "description": "Synthetic scenario: tool: Bash with path is invalid.",
+        "category": "role-discipline",
+        "prompt": "run something",
+        "setup": {"workspace_template": "tech-lead"},
+        "evaluators": [
+            {
+                "type": "deterministic",
+                "check": "tool_call_made",
+                "tool": "Bash",
+                # Wrong on purpose — Bash tool's arg is `command`, not `path`.
+                "path": "gh pr",
+            }
+        ],
+    }
+    bad_path = tmp_path / "bad-bash-uses-path.yaml"
+    bad_path.write_text(_yaml.safe_dump(bad_scenario), encoding="utf-8")
+
+    with pytest.raises(CHECK.ScenarioValidationError) as exc_info:  # type: ignore[attr-defined]
+        CHECK.validate_scenario(bad_path)  # type: ignore[attr-defined]
+
+    msg = str(exc_info.value)
+    assert "Bash" in msg and "command" in msg, (
+        f"validator should explain the Bash-needs-command rule; got: {msg!r}"
+    )
+
+    # And the corrected form (command, no path) should validate cleanly.
+    good_scenario = dict(bad_scenario)
+    good_scenario["id"] = "good-bash-uses-command"
+    good_scenario["evaluators"] = [
+        {
+            "type": "deterministic",
+            "check": "tool_call_made",
+            "tool": "Bash",
+            "command": "gh pr",
+        }
+    ]
+    good_path = tmp_path / "good-bash-uses-command.yaml"
+    good_path.write_text(_yaml.safe_dump(good_scenario), encoding="utf-8")
+    CHECK.validate_scenario(good_path)  # type: ignore[attr-defined]  # must not raise
+
+    # Symmetric: a non-Bash tool with `command` instead of `path` is rejected.
+    wrong_tool_scenario = dict(bad_scenario)
+    wrong_tool_scenario["id"] = "bad-read-uses-command"
+    wrong_tool_scenario["evaluators"] = [
+        {
+            "type": "deterministic",
+            "check": "tool_call_made",
+            "tool": "Read",
+            "command": "should-not-be-here",
+        }
+    ]
+    wrong_tool_path = tmp_path / "bad-read-uses-command.yaml"
+    wrong_tool_path.write_text(_yaml.safe_dump(wrong_tool_scenario), encoding="utf-8")
+    with pytest.raises(CHECK.ScenarioValidationError) as exc_info_2:  # type: ignore[attr-defined]
+        CHECK.validate_scenario(wrong_tool_path)  # type: ignore[attr-defined]
+    assert "command" in str(exc_info_2.value)

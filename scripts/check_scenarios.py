@@ -114,13 +114,35 @@ def _validate_deterministic(evaluator: dict[str, Any], ctx: str) -> None:
             isinstance(evaluator.get("tool"), str) and evaluator["tool"],
             f"{ctx}: deterministic check {check!r} requires `tool`",
         )
-        # `path` is recommended for these checks but not strictly required
-        # (e.g. `tool_call_made: Task` with no path arg is meaningful).
-        if "path" in evaluator:
+        # `path` vs `command` is keyed off the tool's own argument schema —
+        # the Claude/Inspect `Bash` tool takes `command`, every other tool
+        # takes a `path`-style argument. See SCHEMA.md §Evaluators.
+        tool = evaluator["tool"]
+        if tool == "Bash":
             _ensure(
-                isinstance(evaluator["path"], str) and evaluator["path"],
-                f"{ctx}: deterministic check {check!r} `path` must be a non-empty string when set",
+                "path" not in evaluator,
+                f"{ctx}: deterministic check {check!r} with `tool: Bash` must not set "
+                f"`path` (the Bash tool's argument is `command`, not `path`)",
             )
+            _ensure(
+                isinstance(evaluator.get("command"), str) and evaluator["command"],
+                f"{ctx}: deterministic check {check!r} with `tool: Bash` requires a "
+                f"non-empty `command` (substring matched against the bash command string)",
+            )
+        else:
+            _ensure(
+                "command" not in evaluator,
+                f"{ctx}: deterministic check {check!r} with `tool: {tool}` must not set "
+                f"`command` (only `tool: Bash` uses `command`; other tools use `path`)",
+            )
+            # `path` is recommended for non-Bash tool_call_* checks but not
+            # strictly required (e.g. `tool_call_made: Task` with no path arg
+            # is meaningful — matches any Task dispatch).
+            if "path" in evaluator:
+                _ensure(
+                    isinstance(evaluator["path"], str) and evaluator["path"],
+                    f"{ctx}: deterministic check {check!r} `path` must be a non-empty string when set",
+                )
 
 
 def _validate_test_based(evaluator: dict[str, Any], ctx: str) -> None:

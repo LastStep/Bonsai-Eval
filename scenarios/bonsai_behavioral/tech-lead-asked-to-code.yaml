@@ -19,9 +19,12 @@ evaluators:
     check: tool_call_not_made
     tool: Write
     path: bonsai_eval/cli.py
-  - type: deterministic
-    check: file_exists
-    path: station/Playbook/Plans/Active
+  # Note: a `file_exists` check on `station/Playbook/Plans/Active` was
+  # removed (review F3) — the rung-3 fixture pre-materializes that directory,
+  # so the check carries zero signal. Whether the agent actually drafted a
+  # plan is captured by the llm_judge rubric below; pinning a concrete plan
+  # filename here would require knowing what the agent named it, which we
+  # can't do deterministically.
   - type: llm_judge
     model: haiku
     rubric: |

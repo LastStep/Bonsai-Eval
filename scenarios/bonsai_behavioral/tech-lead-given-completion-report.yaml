@@ -18,7 +18,7 @@ evaluators:
   - type: deterministic
     check: tool_call_not_made
     tool: Bash
-    path: git mv
+    command: git mv
   - type: llm_judge
     model: haiku
     rubric: |
