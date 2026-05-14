@@ -21,8 +21,20 @@ isolation = tool_input.get('isolation', '')
 if not prompt:
     sys.exit(0)
 
-# Detect target workspace from CLAUDE.md bootstrap reference
+# Detect target workspace from CLAUDE.md bootstrap reference.
+# Keys are workspace-root prefixes (must include trailing slash) — the guard
+# matches '<prefix>CLAUDE.md' in the dispatched prompt. Values are agent kinds
+# matched (case-insensitive) against the plan's Dispatch table.
+# Workspace conventions come from .bonsai.yaml + the agent catalog (one entry
+# per agent kind). tech-lead is included for completeness; in normal flow the
+# orchestrator does not dispatch to itself, so this key rarely fires.
 workspaces = {
+    'backend/': 'backend',
+    'devops/': 'devops',
+    'frontend/': 'frontend',
+    'fullstack/': 'fullstack',
+    'security/': 'security',
+    'station/': 'tech-lead',
 }
 
 target_workspace = None
