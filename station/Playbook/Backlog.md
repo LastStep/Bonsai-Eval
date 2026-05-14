@@ -51,6 +51,8 @@ description: Prioritized backlog — bugs, features, debt, research, and improve
 <!-- Next batch of work. Promote to Status.md when capacity opens. -->
 
 - **[bug] `station/agent/Sensors/dispatch-guard.sh` has `workspaces = {}` — guard short-circuits, never fires.** `dispatch-without-plan-refused.yaml` (PR #3) asserts `hook_event_fired: dispatch-guard` at rung 3. Pre-existing bug in installed station. Must fix before P2.5 validation runs. *(added 2026-05-14, source: PR #3 adversarial review F-adv-4)*
+- **[bug] `dispatch-guard.sh` writes `BLOCKED:` to stderr; other PreToolUse sensors use stdout.** Inspect AI's claude-code bridge may not surface stderr into transcript — `hook_event_fired(dispatch-guard)` deterministic check could falsely fail at rung-3 even after the workspaces dict fix. Switch dispatch-guard `print(..., file=sys.stderr)` → stdout for consistency. *(added 2026-05-14, source: PR #5 adversarial review F1)*
+- **[bug] `scope-guard-files.sh` only blocks `.env*` writes, not "outside station/" as header comment claims.** Mis-scoped sensor. `edit-outside-workspace-blocked.yaml` expects block on paths like `/backend/foo.py`; agent's Edit succeeds silently, hook never fires. Rewrite sensor to enforce workspace boundaries per its docstring. *(added 2026-05-14, source: PR #5 adversarial review F2)*
 
 ## P2 — Medium
 
@@ -59,6 +61,8 @@ description: Prioritized backlog — bugs, features, debt, research, and improve
 - **[debt] Replace rungs.py version constants with `importlib.metadata.version("inspect-swe")` + analogous for mini-swe-agent.** Hand-maintained `MINI_SWE_AGENT_VERSION` / `INSPECT_SWE_VERSION_PIN` drift silently if pyproject pins move. Pre-reg integrity demands installed-pkg readback. TODO comment in `bonsai_eval/solvers/rungs.py` from PR #2 review. *(added 2026-05-14, source: session, ref: PR #2 review F4)*
 - **[debt] Cost-fallback table in `tests/test_substrate.py` hardcoded to Haiku 4.5 pricing.** If `SMOKE_MODEL` constant changes, silent mis-estimate. Add `assert cfg.model == "anthropic/claude-haiku-4-5"` before pricing kicks in, or guard table lookup by model name. *(added 2026-05-14, source: session, ref: PR #2 review F5)*
 - **[debt] Stale agent worktrees under `.claude/worktrees/`.** Three locked worktrees from P0.2 dispatches (`a2fc0e...`, `a6da6a...`, `a9802f...`); branches closed/merged. `git worktree remove --force` after confirming no active agent processes hold them. *(added 2026-05-14, source: session)*
+- **[debt] `tests/test_tasks_discovery.py` uses private `inspect_ai._eval.list.list_tasks`.** Underscore-prefixed module — Inspect AI can rename without notice. Wrap with try/except + pytest.skip fallback, or pin inspect-ai exact version with assertion. *(added 2026-05-14, source: PR #5 adversarial review F4)*
+- **[debt] `bonsai_eval/tasks/bonsai_behavioral.py` hard-codes `data/raw/rung2_home/` for all 12 tasks.** Concurrent task execution (Inspect `--parallel`) races `~/.claude` seeding. P2.5 must run sequential (`--max-tasks 1`) until each task mints unique sub-path. *(added 2026-05-14, source: PR #5 adversarial review F5)*
 
 ## P3 — Ideas & Research
 
