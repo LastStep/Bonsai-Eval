@@ -99,9 +99,30 @@ Additional caveats (per `RESEARCH-proof-of-bonsai-effectiveness.md` §7):
 
 ## Methodology validation
 
-> Filled in at the close of P2 (Bonsai-behavioral scenarios validation pass).
+**Status:** Placeholder — populated by `scripts/run_validation.py` after P2.5 paid run.
 
-`<PENDING — P2>`
+| Field | Value |
+|---|---|
+| Run date | _pending_ |
+| Total runs | _pending_ (expected 108) |
+| Total cost | _pending_ (budget $20) |
+| Cost per rung | r1=_pending_, r2=_pending_, r3=_pending_ |
+
+### Per-rung pass-rate (12 scenarios × 3 seeds = 36 runs per rung)
+
+_pending_
+
+### Per-scenario per-rung pass-rate (12 × 3 matrix)
+
+_pending_
+
+### Acceptance: Bonsai-rung pass-rate ≥ bare-CC-rung on ≥8/12 scenarios
+
+_pending_
+
+### Caveats
+
+_pending_
 
 ---
 
