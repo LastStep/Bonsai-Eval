@@ -161,11 +161,11 @@ P0.1. **Create `Bonsai-Eval` repo** on GitHub under `LastStep`. Include:
    - `.github/workflows/ci.yml` — pytest + ruff + mypy on push/PR.
 
 P0.2. **Inspect AI substrate + drop-in solver smoke test.** Write `tests/test_substrate.py` covering 3 cases. All against Claude Haiku for cost (target: < $0.10 total).
-   - **Case A — bare substrate.** Trivial `Task` ("write hello world in Python"), no-op `Solver` calling `generate()`, deterministic `Scorer` checking `print("hello world")`. Asserts score=1.0. Validates Inspect AI install.
+   - **Case A — bare substrate.** Trivial `Task` ("write hello world in Python"), no-op `Solver` calling `generate()`, deterministic `Scorer` checking output contains `hello world` (case-insensitive substring — robust across agentic and non-agentic solvers; agentic solvers in B/C summarize work, don't echo code). Asserts score=1.0. Validates Inspect AI install.
    - **Case B — `inspect_swe.mini_swe_agent()` smoke.** Same task, solver = `rung1_raw_api(model="anthropic/claude-haiku-4-5")`. Asserts score=1.0. Validates rung-1 drop-in.
-   - **Case C — `inspect_swe.claude_code()` smoke + workspace-suppression check.** Same task, solver = `rung2_bare_cc(...)` invoked from `tmp_path` (pytest fixture, empty dir). Asserts: (1) score=1.0, (2) no `CLAUDE.md`/`.claude/` materialized in cwd, (3) `claude` process inherits no `~/.claude/projects/-...-/CLAUDE.md` ambient state (probe via `inspect eval --log-format=json` + grep transcript for system-prompt content). Validates rung-2 drop-in is genuinely "bare CC."
+   - **Case C — `inspect_swe.claude_code()` smoke + workspace-suppression check.** Same task, solver = `rung2_bare_cc(...)` invoked from `tmp_path` (pytest fixture, empty dir) with `env={"HOME": tmp_home}` redirect (per 2026-05-14 finding — see §Risks #1). Asserts: (1) score=1.0, (2) no `CLAUDE.md`/`.claude/` materialized in cwd, (3) given `HOME=tmp_home`, the `claude` process inherits no ambient `CLAUDE.md` content (probe Inspect AI eval log → samples[0].messages → grep system-message content for literal "Tech Lead Agent" or "Bonsai" — neither must appear). Validates rung-2 drop-in is "bare CC under HOME redirect."
 
-   If Case C step (3) fails, document the gap and pivot to subprocess-driving `claude` with `--no-inherit-claude-md`-equivalent flag (escalate before P1).
+   If Case C step (3) fails even with HOME redirected, document the gap and escalate — the inspect-swe drop-in cannot be made bare without abandoning it (fallback = custom `claude-agent-sdk` rung-2, ~500 LOC).
 
 P0.3. **Wire the 3 rungs.** Solver Strategy revision (2026-05-08): rungs 1+2 reuse `inspect-swe` drop-ins (Meridian Labs, JJ Allaire / UK AISI / Apollo contributors — see Trust Audit notes in §Risks). Only rung 3 is custom.
    - `bonsai_eval/solvers/__init__.py` — re-exports the 3 rung factories below for ergonomic import.
@@ -368,7 +368,7 @@ Estimated cost: $200–500.
 
 ## Risks
 
-1. ~~**Claude Agent SDK headless flow may not exist or may not support workspace pinning.**~~ **RESOLVED 2026-05-08.** `claude-agent-sdk` v0.1.77 (released 2026-05-08, Anthropic-official, MIT) supports `cwd` pinning + `system_prompt` override + headless `query()`. `inspect_swe.claude_code()` wraps it as Inspect Solver. Remaining residual risk = workspace-file suppression for "bare CC" rung-2 — covered by P0.2 Case C smoke test.
+1. **Claude Agent SDK headless flow + workspace suppression for "bare CC" rung-2.** Partially RESOLVED 2026-05-08 (`claude-agent-sdk` v0.1.77 supports `cwd` pinning + headless `query()`; `inspect_swe.claude_code()` wraps it). **RE-OPENED 2026-05-14:** P0.2 smoke tests (run for the first time) revealed `inspect_swe.claude_code()` (a) requires a Docker sandbox (no local-mode option), and (b) does NOT suppress ambient `~/.claude/` inheritance — it actively writes `~/.claude/settings.json` via `_seed_claude_config()` and inherits all user skills/MCP servers/hooks/CLAUDE.md. **Mitigation (2026-05-14):** rung-2 solver passes `env={"HOME": tmp_path}` per invocation; Docker daemon pulled forward from P3 to P0.2 manual prep. **Residual risk:** Claude Code may misbehave without persistent HOME (e.g. missing OAuth/session state); fallback path = custom rung-2 via direct `claude-agent-sdk` (Plan §Risks #8 cost, ~500 LOC).
 2. **Codeburn schema change.** Proof-doc assumes `schema: codeburn.export.v2`. If codeburn ships v3 between now and execution, the fetcher breaks. **Mitigation:** pin schema check; fail fast with a clear error.
 3. **JSONL hook-event coverage is unclear.** Online research notes hooks fire async/non-blocking and may not all land in transcripts. **Mitigation:** in P1.2, write a probe script that searches for `hook_event_name` in existing JSONL — if absent, the C7-style claims (scope-guard fires) become inferred-from-absence (file unchanged) rather than directly observed.
 4. **LLM-judge variance on Bonsai-behavioral scenarios.** Style/length bias could swamp the signal on subjective scoring. **Mitigation:** position-swap pairwise where applicable; report Cohen's κ across N≥3 seeds; lean deterministic-first, judge-as-tiebreaker.
@@ -405,7 +405,10 @@ Estimated cost: $200–500.
    which codeburn && codeburn --version  # already 0.8.7 confirmed
    echo ${ANTHROPIC_API_KEY:0:10}         # confirm set, prefix only
    gh auth status                         # confirmed LastStep
+   docker ps                              # daemon up (rung-2 + rung-3 need it)
    ```
+
+6. **Docker daemon running** (added 2026-05-14 — pulled from P3 to P0.2). `inspect_swe.claude_code()` requires a Docker sandbox; no local-mode escape. Confirmed available on dogfood machine 2026-05-14 (Docker v29.3.1, WSL2 + Docker Desktop). **First rung-2 invocation pulls `aisiuk/inspect-tool-support` (~4.33 GB)** — one-time cost, cached locally after.
 
 ---
 

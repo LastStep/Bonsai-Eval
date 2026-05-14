@@ -54,6 +54,10 @@ description: Prioritized backlog — bugs, features, debt, research, and improve
 
 <!-- Planned but not scheduled. Review at phase boundaries. -->
 
+- **[debt] Replace rungs.py version constants with `importlib.metadata.version("inspect-swe")` + analogous for mini-swe-agent.** Hand-maintained `MINI_SWE_AGENT_VERSION` / `INSPECT_SWE_VERSION_PIN` drift silently if pyproject pins move. Pre-reg integrity demands installed-pkg readback. TODO comment in `bonsai_eval/solvers/rungs.py` from PR #2 review. *(added 2026-05-14, source: session, ref: PR #2 review F4)*
+- **[debt] Cost-fallback table in `tests/test_substrate.py` hardcoded to Haiku 4.5 pricing.** If `SMOKE_MODEL` constant changes, silent mis-estimate. Add `assert cfg.model == "anthropic/claude-haiku-4-5"` before pricing kicks in, or guard table lookup by model name. *(added 2026-05-14, source: session, ref: PR #2 review F5)*
+- **[debt] Stale agent worktrees under `.claude/worktrees/`.** Three locked worktrees from P0.2 dispatches (`a2fc0e...`, `a6da6a...`, `a9802f...`); branches closed/merged. `git worktree remove --force` after confirming no active agent processes hold them. *(added 2026-05-14, source: session)*
+
 ## P3 — Ideas & Research
 
 <!-- Nice-to-haves, research topics, improvement ideas. Low urgency, high optionality. -->
