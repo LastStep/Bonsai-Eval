@@ -34,6 +34,14 @@ from bonsai_eval.preregistration import (
 # pinned in pyproject.toml; mismatch indicates a botched dependency upgrade.
 INSPECT_SWE_VERSION_PIN = "0.2.51"
 
+# `mini-swe-agent` CLI version pin — distinct from the inspect-swe package
+# version. `inspect_swe.mini_swe_agent(version=...)` validates this against
+# the mini-swe-agent CLI semver (must be >= 2.0.0; see
+# `inspect_swe/_mini_swe_agent/setup.py:validate_version`). 2.2.3 is the
+# pinned `"stable"` default in inspect-swe 0.2.51 — we encode it explicitly
+# here for reproducibility instead of relying on the moving sentinel.
+MINI_SWE_AGENT_VERSION = "2.2.3"
+
 # Rung-1 system prompt floor — pinned text. This is the field's accepted
 # "minimal harness" framing for mini-swe-agent (per Plan 38 §Risks #5).
 RUNG1_SYSTEM_PROMPT = (
@@ -64,7 +72,7 @@ def rung1_raw_api(
     agent = mini_swe_agent(
         model=cfg.model,
         system_prompt=RUNG1_SYSTEM_PROMPT,
-        version=INSPECT_SWE_VERSION_PIN,
+        version=MINI_SWE_AGENT_VERSION,
         **kwargs,
     )
     return as_solver(agent)
@@ -74,26 +82,61 @@ def rung2_bare_cc(
     *,
     preregistration: PreregistrationConfig | None = None,
     cwd: str | Path | None = None,
+    home_dir: Path | None = None,
     **kwargs: Any,
 ) -> Solver:
     """Rung 2 — `inspect_swe.claude_code` drop-in (bare Claude Code).
 
     Runs from a fresh temp dir by default — no `.claude/`, no `CLAUDE.md`,
-    no `station/` materialization. Workspace-file inheritance is suppressed
-    here; the P0.2 Case C smoke test verifies absence of ambient state in
-    the live process. Caller may override `cwd` to a pre-prepared empty dir.
+    no `station/` materialization in the sandbox cwd. Workspace-file
+    inheritance from the *host* `~/.claude/` is also suppressed by redirecting
+    `HOME` to an empty tmp dir per Plan 38 §Risks #1 (re-opened 2026-05-14):
+    `inspect_swe.claude_code()` writes `~/.claude/settings.json` via
+    `_seed_claude_config()` AND inherits user skills / MCP servers / CLAUDE.md.
+
+    Args:
+        cwd: Optional sandbox-internal working directory string. Interpreted
+            **inside the Docker container**, not on the host — pass a path
+            that exists in the container image (or rely on the agent's
+            default cwd by leaving this `None`). We do NOT `mkdir` on the
+            host because the container filesystem is isolated.
+        home_dir: REQUIRED. Path string used as the agent's `HOME` inside
+            the sandbox. The caller MUST supply this (typically an empty
+            tmp dir under `pytest`'s `tmp_path`, used purely as a string)
+            to prevent ambient `~/.claude/` inheritance. `_seed_claude_config`
+            runs `mkdir -p "$HOME/.claude"` inside the sandbox, so the path
+            doesn't need to pre-exist in the container. Passing `None`
+            raises `ValueError`.
+
+    Sandbox: requires a Docker sandbox configured on the Inspect `Task`
+    (e.g. `Task(..., sandbox="docker")`). `inspect_swe.claude_code` cannot
+    run under `LocalSandboxEnvironment` — the bridged-tools plumbing needs
+    sandbox isolation. We do NOT pass a `user=` override (conflicts with
+    local sandboxes; not needed for Docker). The Inspect Task's default
+    sandbox is picked up automatically by the agent; callers can route to a
+    named sandbox via `**kwargs` if needed.
     """
     cfg = _validate_preregistration(preregistration)
-    target_cwd = (
-        str(cwd)
-        if cwd is not None
-        else str(Path(tempfile.gettempdir()) / f"bonsai-eval-rung2-{uuid.uuid4().hex}")
-    )
-    Path(target_cwd).mkdir(parents=True, exist_ok=True)
+    if home_dir is None:
+        raise ValueError(
+            "rung2_bare_cc requires home_dir to prevent ambient "
+            "~/.claude inheritance — pass an empty tmp dir per plan §Risks #1"
+        )
+
+    # HOME redirect — see Plan 38 §Risks #1 (re-opened 2026-05-14). The
+    # `env=` dict is layered into the sandbox process env by `claude_code`.
+    # `_seed_claude_config()` runs `mkdir -p "$HOME/.claude"` inside the
+    # sandbox, so this path is created on demand in the container.
+    env = {"HOME": str(home_dir)}
+
+    agent_kwargs: dict[str, Any] = dict(kwargs)
+    if cwd is not None:
+        agent_kwargs["cwd"] = str(cwd)
+
     agent = claude_code(
         model=cfg.model,
-        cwd=target_cwd,
-        **kwargs,
+        env=env,
+        **agent_kwargs,
     )
     return as_solver(agent)
 
