@@ -63,6 +63,36 @@ RUNG_TOKEN_TO_NAME: dict[str, str] = {"r1": "rung1", "r2": "rung2", "r3": "rung3
 # and the dry-run output banner.
 _PRICE_INPUT_USD_PER_MTOK = 1.00
 _PRICE_OUTPUT_USD_PER_MTOK = 5.00
+_PRICE_CACHE_READ_USD_PER_MTOK = 0.10
+_PRICE_CACHE_WRITE_USD_PER_MTOK = 1.25
+_HAIKU_4_5_MODEL_ID = "anthropic/claude-haiku-4-5"
+_haiku_cost_registered = False
+
+
+def _ensure_haiku_cost_registered() -> None:
+    """Register Haiku 4.5 pricing with Inspect AI exactly once per process.
+
+    Inspect's `cost_limit=` refuses to run when the model has `cost=None` in
+    its model-info DB (PrerequisiteError pre-flight). Haiku 4.5 IS in the DB
+    on inspect-ai 0.3.219 but `cost` is None, so we register prices once
+    before any `inspect_eval(..., cost_limit=...)` call. Idempotent.
+    """
+    global _haiku_cost_registered
+    if _haiku_cost_registered:
+        return
+    from inspect_ai.model._model_info import ModelCost, set_model_cost  # noqa: PLC0415
+
+    set_model_cost(
+        _HAIKU_4_5_MODEL_ID,
+        ModelCost(
+            input=_PRICE_INPUT_USD_PER_MTOK,
+            output=_PRICE_OUTPUT_USD_PER_MTOK,
+            input_cache_read=_PRICE_CACHE_READ_USD_PER_MTOK,
+            input_cache_write=_PRICE_CACHE_WRITE_USD_PER_MTOK,
+        ),
+    )
+    _haiku_cost_registered = True
+
 
 # Dry-run estimate per (scenario, rung, seed) — Haiku is cheap; assume
 # ~10k input + ~2k output tokens per run, well under per-task 8k cap on
@@ -252,6 +282,8 @@ def _invoke_eval(
     from inspect_ai import eval as inspect_eval  # noqa: PLC0415
 
     from bonsai_eval.tasks import bonsai_behavioral as tasks_mod  # noqa: PLC0415
+
+    _ensure_haiku_cost_registered()
 
     snake = spec.scenario_id.replace("-", "_")
     task_fn = getattr(tasks_mod, snake, None)

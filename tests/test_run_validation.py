@@ -506,3 +506,51 @@ def test_rung_token_to_name_alignment() -> None:
     from bonsai_eval.tasks.bonsai_behavioral import VALID_RUNGS  # noqa: PLC0415
 
     assert set(rv.RUNG_TOKEN_TO_NAME.values()) == VALID_RUNGS
+
+
+# --- Haiku 4.5 cost registration (Inspect AI cost_limit gate) -------------
+
+
+def test_ensure_haiku_cost_registered_called_once_across_invocations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_invoke_eval` must register Haiku 4.5 pricing with Inspect AI's
+    model-info DB exactly once per process so `cost_limit=` does not trip
+    the PrerequisiteError pre-flight check.
+
+    Two `_invoke_eval` calls should result in a single `set_model_cost`
+    invocation; the args must match the Haiku 4.5 list pricing constants.
+    """
+    pick = sorted(p.stem for p in SCENARIOS_DIR.glob("*.yaml"))[0]
+
+    # Reset the module-level guard so this test is order-independent.
+    monkeypatch.setattr(rv, "_haiku_cost_registered", False)
+
+    recorded: list[tuple[object, object]] = []
+
+    def recording_set_model_cost(model_id: object, cost: object) -> None:
+        recorded.append((model_id, cost))
+
+    # No-op inspect_ai.eval so `_invoke_eval` short-circuits with "no logs"
+    # without spending real money or hitting the network.
+    def fake_inspect_eval(task: object, **kwargs: object) -> list[object]:
+        del task, kwargs
+        return []
+
+    import inspect_ai
+    from inspect_ai.model import _model_info as model_info_mod
+
+    monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval)
+    monkeypatch.setattr(model_info_mod, "set_model_cost", recording_set_model_cost)
+
+    spec = rv.RunSpec(scenario_id=pick, rung="rung2", seed=0)
+    rv._invoke_eval(spec, model="anthropic/claude-haiku-4-5")
+    rv._invoke_eval(spec, model="anthropic/claude-haiku-4-5")
+
+    assert len(recorded) == 1, f"expected exactly one set_model_cost call, got {len(recorded)}"
+    model_id, cost = recorded[0]
+    assert model_id == "anthropic/claude-haiku-4-5"
+    assert cost.input == 1.00
+    assert cost.output == 5.00
+    assert cost.input_cache_read == 0.10
+    assert cost.input_cache_write == 1.25
