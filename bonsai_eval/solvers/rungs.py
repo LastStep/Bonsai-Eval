@@ -27,6 +27,7 @@ from inspect_swe import claude_code, mini_swe_agent
 from bonsai_eval.preregistration import (
     ACTIVE_PREREGISTRATION,
     PreregistrationConfig,
+    PreregistrationViolation,
     assert_preregistration,
 )
 
@@ -51,10 +52,50 @@ RUNG1_SYSTEM_PROMPT = (
 )
 
 
+def _validate_versions_match_preregistration(cfg: PreregistrationConfig) -> None:
+    """Raise `PreregistrationViolation` if module constants drift from the pre-reg config.
+
+    Plan 38 §"Pre-Registration" + §P0.3 require pre-reg integrity to be
+    machine-checkable. The solver-stack versions live in two places:
+
+      1. `MINI_SWE_AGENT_VERSION` / `INSPECT_SWE_VERSION_PIN` in this module
+         (used at the actual `mini_swe_agent(version=...)` call site).
+      2. `mini_swe_agent_version` / `inspect_swe_version` on the pre-reg config
+         (the contract recorded with the claim).
+
+    If they diverge — e.g. someone bumps the constant without updating the
+    locked claim — every rung's entry point should fail loudly rather than
+    silently measuring a different stack than what was pre-registered.
+
+    TODO(hardening): replace the constant-based check with
+    `importlib.metadata.version("inspect-swe")` and the equivalent for
+    `mini-swe-agent` once the metadata path is verified in CI. Package
+    metadata reads are environment-dependent, so we keep the constant-based
+    check for now to avoid spurious CI failures.
+    """
+    mismatches: list[str] = []
+    if cfg.mini_swe_agent_version != MINI_SWE_AGENT_VERSION:
+        mismatches.append(
+            f"  MINI_SWE_AGENT_VERSION: module={MINI_SWE_AGENT_VERSION!r}, "
+            f"pre-reg={cfg.mini_swe_agent_version!r}"
+        )
+    if cfg.inspect_swe_version != INSPECT_SWE_VERSION_PIN:
+        mismatches.append(
+            f"  INSPECT_SWE_VERSION_PIN: module={INSPECT_SWE_VERSION_PIN!r}, "
+            f"pre-reg={cfg.inspect_swe_version!r}"
+        )
+    if mismatches:
+        raise PreregistrationViolation(
+            "Solver-stack version drift — module constants do not match the "
+            "locked pre-registration claim:\n" + "\n".join(mismatches)
+        )
+
+
 def _validate_preregistration(cfg: PreregistrationConfig | None) -> PreregistrationConfig:
     """Resolve to ACTIVE_PREREGISTRATION, then assert match. Returns the validated cfg."""
     effective = cfg if cfg is not None else ACTIVE_PREREGISTRATION
     assert_preregistration(effective, ACTIVE_PREREGISTRATION)
+    _validate_versions_match_preregistration(effective)
     return effective
 
 
