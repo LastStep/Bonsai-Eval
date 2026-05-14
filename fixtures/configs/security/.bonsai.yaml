@@ -1,0 +1,7 @@
+# Security-agent overlay fixture for `bonsai add --non-interactive --from-config`.
+# `bonsai init` only accepts a tech-lead at init time, so the rung-3 solver
+# bootstraps with `fixtures/configs/minimal/.bonsai.yaml` first and then
+# applies this overlay via `bonsai add`. See backend/.bonsai.yaml for the
+# rationale.
+agents:
+  security: {}

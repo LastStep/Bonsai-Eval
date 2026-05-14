@@ -18,6 +18,7 @@ regression cannot reappear silently.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -96,7 +97,9 @@ def test_dispatch_without_worktree_is_blocked() -> None:
         }
     )
     assert result.returncode == 2, f"expected exit 2, got {result.returncode}"
-    assert "Missing worktree isolation" in result.stderr
+    # F1 (2026-05-14): dispatch-guard now writes BLOCKED markers to stdout for
+    # transcript capture parity with the other PreToolUse sensors.
+    assert "Missing worktree isolation" in result.stdout
 
 
 def test_dispatch_without_plan_reference_is_blocked() -> None:
@@ -114,7 +117,7 @@ def test_dispatch_without_plan_reference_is_blocked() -> None:
         }
     )
     assert result.returncode == 2, f"expected exit 2, got {result.returncode}"
-    assert "No plan referenced" in result.stderr
+    assert "No plan referenced" in result.stdout
 
 
 def test_non_dispatch_prompt_is_skipped() -> None:
@@ -160,8 +163,123 @@ def test_each_workspace_prefix_is_detected(workspace_prefix: str, agent_kind: st
     )
     assert result.returncode == 2, (
         f"workspace {workspace_prefix!r} not detected — guard short-circuited "
-        f"(exit {result.returncode}, stderr {result.stderr!r})"
+        f"(exit {result.returncode}, stdout {result.stdout!r})"
     )
-    assert agent_kind in result.stderr, (
-        f"expected agent kind {agent_kind!r} in stderr, got: {result.stderr!r}"
+    assert agent_kind in result.stdout, (
+        f"expected agent kind {agent_kind!r} in stdout, got: {result.stdout!r}"
+    )
+
+
+# --- repo-root resolution precedence ---------------------------------------
+#
+# Mirrors `test_scope_guard_files.py`'s positional-arg coverage. The same
+# bug class hit dispatch-guard.sh (hardcoded `docs_path = 'station/'` relative
+# to CWD) — at rung-2/rung-3 the sandbox CWD differs from host repo root and
+# the guard short-circuit-fails with a false "Plan NNN not found".
+#
+# Production wires `bash dispatch-guard.sh "<repo-root>"`; the bash side
+# exports `BONSAI_DISPATCH_GUARD_REPO_ROOT` so the python heredoc sees it.
+
+
+def _build_synthetic_repo(root: Path, plan_number: str) -> None:
+    """Create a minimal repo layout: station/Playbook/Plans/Active/NNN-foo.md."""
+    plans = root / "station" / "Playbook" / "Plans" / "Active"
+    plans.mkdir(parents=True)
+    (plans / f"{plan_number}-synthetic.md").write_text("# synthetic plan\n")
+
+
+def test_positional_arg_sets_repo_root(tmp_path: Path) -> None:
+    """Production wiring: `bash dispatch-guard.sh <repo-root>` (positional).
+
+    The sensor must consult `$1` when `BONSAI_DISPATCH_GUARD_REPO_ROOT` is
+    unset in the environment — otherwise Inspect-sandbox callers at
+    rung-2/rung-3 (where CWD ≠ host repo) silently get false "plan not found"
+    blocks (mirrors the H-1 fix already landed for scope-guard-files.sh).
+    """
+    _build_synthetic_repo(tmp_path, "42")
+    payload = json.dumps(
+        {
+            "tool_input": {
+                "prompt": "Read backend/CLAUDE.md first per Plan 42",
+                "isolation": "worktree",
+            }
+        }
+    )
+    env = {k: v for k, v in os.environ.items() if k != "BONSAI_DISPATCH_GUARD_REPO_ROOT"}
+    # CWD is intentionally NOT the synthetic repo — emulates sandbox conditions.
+    result = subprocess.run(
+        ["bash", str(GUARD), str(tmp_path)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd="/tmp",
+        env=env,
+    )
+    assert result.returncode == 0, (
+        f"expected exit 0 via positional `$1`, got {result.returncode}; "
+        f"stdout: {result.stdout!r}; stderr: {result.stderr!r}"
+    )
+
+
+def test_positional_arg_overrides_env_var(tmp_path: Path) -> None:
+    """When BOTH `$1` and `BONSAI_DISPATCH_GUARD_REPO_ROOT` are set, `$1` wins.
+
+    Matches bash precedence in the sensor header. Production passes `$1`;
+    leaking env vars must not silently shadow it.
+    """
+    correct = tmp_path / "correct"
+    wrong = tmp_path / "wrong"
+    _build_synthetic_repo(correct, "77")
+    wrong.mkdir()  # no plan 77 here — env-var path would miss it
+
+    payload = json.dumps(
+        {
+            "tool_input": {
+                "prompt": "Read backend/CLAUDE.md first per Plan 77",
+                "isolation": "worktree",
+            }
+        }
+    )
+    env = os.environ.copy()
+    env["BONSAI_DISPATCH_GUARD_REPO_ROOT"] = str(wrong)
+    result = subprocess.run(
+        ["bash", str(GUARD), str(correct)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd="/tmp",
+        env=env,
+    )
+    # If `$1` won, plan resolves under correct/ → exit 0.
+    # If env won, plan would not be found under wrong/ → exit 2.
+    assert result.returncode == 0, (
+        f"expected `$1` to override env, got exit {result.returncode}; "
+        f"stdout: {result.stdout!r}; stderr: {result.stderr!r}"
+    )
+
+
+def test_positional_arg_from_unrelated_cwd_finds_plan(tmp_path: Path) -> None:
+    """Sensor invoked from `/tmp` with positional `$1=<absolute repo path>`
+    must still resolve plans — this is the rung-2/rung-3 production scenario."""
+    _build_synthetic_repo(tmp_path, "99")
+    payload = json.dumps(
+        {
+            "tool_input": {
+                "prompt": "Read backend/CLAUDE.md first per Plan 99",
+                "isolation": "worktree",
+            }
+        }
+    )
+    env = {k: v for k, v in os.environ.items() if k != "BONSAI_DISPATCH_GUARD_REPO_ROOT"}
+    result = subprocess.run(
+        ["bash", str(GUARD), str(tmp_path)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd="/tmp",
+        env=env,
+    )
+    assert result.returncode == 0, (
+        f"expected exit 0 with absolute repo-root from /tmp CWD, got {result.returncode}; "
+        f"stdout: {result.stdout!r}; stderr: {result.stderr!r}"
     )

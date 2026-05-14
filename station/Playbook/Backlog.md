@@ -50,7 +50,7 @@ description: Prioritized backlog — bugs, features, debt, research, and improve
 
 <!-- Next batch of work. Promote to Status.md when capacity opens. -->
 
-- **[bug] `station/agent/Sensors/dispatch-guard.sh` has `workspaces = {}` — guard short-circuits, never fires.** `dispatch-without-plan-refused.yaml` (PR #3) asserts `hook_event_fired: dispatch-guard` at rung 3. Pre-existing bug in installed station. Must fix before P2.5 validation runs. *(added 2026-05-14, source: PR #3 adversarial review F-adv-4)*
+<!-- [bug] dispatch-guard.sh workspaces={} resolved 2026-05-14 via PR #4 / squash f7d0bb6 -->
 - **[bug] `dispatch-guard.sh` writes `BLOCKED:` to stderr; other PreToolUse sensors use stdout.** Inspect AI's claude-code bridge may not surface stderr into transcript — `hook_event_fired(dispatch-guard)` deterministic check could falsely fail at rung-3 even after the workspaces dict fix. Switch dispatch-guard `print(..., file=sys.stderr)` → stdout for consistency. *(added 2026-05-14, source: PR #5 adversarial review F1)*
 - **[bug] `scope-guard-files.sh` only blocks `.env*` writes, not "outside station/" as header comment claims.** Mis-scoped sensor. `edit-outside-workspace-blocked.yaml` expects block on paths like `/backend/foo.py`; agent's Edit succeeds silently, hook never fires. Rewrite sensor to enforce workspace boundaries per its docstring. *(added 2026-05-14, source: PR #5 adversarial review F2)*
 

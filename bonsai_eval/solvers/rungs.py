@@ -9,10 +9,48 @@ All 3 factories enforce pre-registration via `assert_preregistration` at entry.
 A solver caller that wants to run a different model / temp / tool-set must open
 a new pre-reg claim and update `ACTIVE_PREREGISTRATION` in
 `bonsai_eval.preregistration` — they cannot smuggle overrides through here.
+
+# Sandbox / cwd semantics (M-1, 2026-05-14 adversarial review)
+
+`bonsai_eval.tasks.bonsai_behavioral._sandbox_for_rung` declares
+`sandbox="docker"` for rung-2 + rung-3. Per
+`inspect_swe._claude_code.claude_code.py:281-291`, the agent's
+`cwd` + `env={"HOME": ...}` are passed to `sbox.exec_remote(...)` —
+which executes the command INSIDE the Docker container. The host paths
+we mint in `scripts/run_validation.py:RunSpec.home_dir` / `workspace_dir`
+will not exist in the container by default.
+
+Today's state — KNOWN GAP, deferred to a follow-up plan item:
+  - The materialize step (`_run_bonsai`) runs on the HOST and writes to
+    HOST paths. Inside the sandbox container, those paths are absent,
+    so the agent sees an empty workspace at the host path it's `cd`-ed
+    into.
+  - This means rung-2 + rung-3 against `sandbox="docker"` are
+    plumbing-broken at the moment. The unit-test surface (which mocks
+    `_run_bonsai` + never spawns Docker) still validates the
+    orchestration logic.
+
+Two viable fixes for a follow-up plan item (track in Backlog):
+  (i)  Switch tasks to `sandbox=None` (local) for rung-2/rung-3, which
+       makes `cwd` a host path and the existing materialization is
+       directly usable. Loses container isolation — accept if the
+       behavioral suite doesn't need it.
+  (ii) Bind-mount the host workspace into the container via Inspect's
+       sandbox spec (`SandboxEnvironmentSpec` with a Docker-compose
+       `volumes:` entry pointing at the host workspace path). Preserves
+       isolation but requires per-run docker-compose templating since
+       the workspace path is unique per (scenario, rung, seed).
+
+Tech lead has been notified — this docstring + a Backlog entry will
+flag the gap until the follow-up plan item lands. Until then, the
+`scripts/run_validation.py` orchestration ships with the documented
+limitation that rung-2/3 require local-sandbox semantics to work
+end-to-end against a live model.
 """
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -20,8 +58,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import yaml
 from inspect_ai.agent import as_solver
-from inspect_ai.solver import Solver
+from inspect_ai.solver import Generate, Solver, TaskState, chain, solver
 from inspect_swe import claude_code, mini_swe_agent
 
 from bonsai_eval.preregistration import (
@@ -51,28 +90,19 @@ RUNG1_SYSTEM_PROMPT = (
     "the user's task. When done, stop."
 )
 
+# Bonsai non-interactive exit codes (mirrors `internal/nonint/runner.go`):
+#   0 — success
+#   2 — invalid config (shape rejected)
+#   3 — runtime error (generator / save failure)
+#   4 — wrong CWD for init (.bonsai.yaml already present)
+BONSAI_EXIT_OK = 0
+BONSAI_EXIT_INVALID_CONFIG = 2
+BONSAI_EXIT_RUNTIME = 3
+BONSAI_EXIT_WRONG_CWD = 4
+
 
 def _validate_versions_match_preregistration(cfg: PreregistrationConfig) -> None:
-    """Raise `PreregistrationViolation` if module constants drift from the pre-reg config.
-
-    Plan 38 §"Pre-Registration" + §P0.3 require pre-reg integrity to be
-    machine-checkable. The solver-stack versions live in two places:
-
-      1. `MINI_SWE_AGENT_VERSION` / `INSPECT_SWE_VERSION_PIN` in this module
-         (used at the actual `mini_swe_agent(version=...)` call site).
-      2. `mini_swe_agent_version` / `inspect_swe_version` on the pre-reg config
-         (the contract recorded with the claim).
-
-    If they diverge — e.g. someone bumps the constant without updating the
-    locked claim — every rung's entry point should fail loudly rather than
-    silently measuring a different stack than what was pre-registered.
-
-    TODO(hardening): replace the constant-based check with
-    `importlib.metadata.version("inspect-swe")` and the equivalent for
-    `mini-swe-agent` once the metadata path is verified in CI. Package
-    metadata reads are environment-dependent, so we keep the constant-based
-    check for now to avoid spurious CI failures.
-    """
+    """Raise `PreregistrationViolation` if module constants drift from the pre-reg config."""
     mismatches: list[str] = []
     if cfg.mini_swe_agent_version != MINI_SWE_AGENT_VERSION:
         mismatches.append(
@@ -131,31 +161,9 @@ def rung2_bare_cc(
     Runs from a fresh temp dir by default — no `.claude/`, no `CLAUDE.md`,
     no `station/` materialization in the sandbox cwd. Workspace-file
     inheritance from the *host* `~/.claude/` is also suppressed by redirecting
-    `HOME` to an empty tmp dir per Plan 38 §Risks #1 (re-opened 2026-05-14):
-    `inspect_swe.claude_code()` writes `~/.claude/settings.json` via
-    `_seed_claude_config()` AND inherits user skills / MCP servers / CLAUDE.md.
+    `HOME` to an empty tmp dir per Plan 38 §Risks #1 (re-opened 2026-05-14).
 
-    Args:
-        cwd: Optional sandbox-internal working directory string. Interpreted
-            **inside the Docker container**, not on the host — pass a path
-            that exists in the container image (or rely on the agent's
-            default cwd by leaving this `None`). We do NOT `mkdir` on the
-            host because the container filesystem is isolated.
-        home_dir: REQUIRED. Path string used as the agent's `HOME` inside
-            the sandbox. The caller MUST supply this (typically an empty
-            tmp dir under `pytest`'s `tmp_path`, used purely as a string)
-            to prevent ambient `~/.claude/` inheritance. `_seed_claude_config`
-            runs `mkdir -p "$HOME/.claude"` inside the sandbox, so the path
-            doesn't need to pre-exist in the container. Passing `None`
-            raises `ValueError`.
-
-    Sandbox: requires a Docker sandbox configured on the Inspect `Task`
-    (e.g. `Task(..., sandbox="docker")`). `inspect_swe.claude_code` cannot
-    run under `LocalSandboxEnvironment` — the bridged-tools plumbing needs
-    sandbox isolation. We do NOT pass a `user=` override (conflicts with
-    local sandboxes; not needed for Docker). The Inspect Task's default
-    sandbox is picked up automatically by the agent; callers can route to a
-    named sandbox via `**kwargs` if needed.
+    See module-level docstring for the rationale.
     """
     cfg = _validate_preregistration(preregistration)
     if home_dir is None:
@@ -164,10 +172,6 @@ def rung2_bare_cc(
             "~/.claude inheritance — pass an empty tmp dir per plan §Risks #1"
         )
 
-    # HOME redirect — see Plan 38 §Risks #1 (re-opened 2026-05-14). The
-    # `env=` dict is layered into the sandbox process env by `claude_code`.
-    # `_seed_claude_config()` runs `mkdir -p "$HOME/.claude"` inside the
-    # sandbox, so this path is created on demand in the container.
     env = {"HOME": str(home_dir)}
 
     agent_kwargs: dict[str, Any] = dict(kwargs)
@@ -182,21 +186,256 @@ def rung2_bare_cc(
     return as_solver(agent)
 
 
+# --- Rung 3 -----------------------------------------------------------------
+
+
+# Subprocess-runner indirection so tests can monkeypatch the `bonsai` CLI.
+# The real implementation calls `subprocess.run` exactly; tests replace this
+# module attribute with a fake that records args + writes deterministic
+# fixture output to the workspace. NO real `bonsai init` runs in pytest.
+#
+# `_RUN_BONSAI_TIMEOUT_S` caps a single `bonsai init` / `bonsai add` invocation
+# at 60s. Bonsai is a Go binary that does a one-shot config render — any run
+# longer than this means something is wedged (network mount stalled, host
+# under disk pressure, etc.). Hanging the whole sweep on a single materialize
+# step is worse than failing the run with an explicit timeout.
+_RUN_BONSAI_TIMEOUT_S = 60
+
+
+def _run_bonsai(args: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
+    """Invoke `bonsai` with a hard wall-clock cap.
+
+    Raises `RuntimeError` (wrapping `subprocess.TimeoutExpired`) on timeout
+    so the rung-3 setup solver surfaces a meaningful error rather than
+    leaving the agent hanging. Tests monkeypatch this entire function.
+    """
+    try:
+        return subprocess.run(
+            args,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            timeout=_RUN_BONSAI_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"bonsai invocation timed out after {_RUN_BONSAI_TIMEOUT_S}s: args={args} cwd={cwd}"
+        ) from exc
+
+
+def _decode_bonsai_error(
+    result: subprocess.CompletedProcess[bytes], op: str, cfg_path: Path
+) -> str:
+    stderr = (result.stderr or b"").decode("utf-8", errors="replace")
+    stdout = (result.stdout or b"").decode("utf-8", errors="replace")
+    return (
+        f"bonsai {op} exit {result.returncode} for {cfg_path}:\nstderr: {stderr}\nstdout: {stdout}"
+    )
+
+
+def _raise_for_bonsai_exit(
+    result: subprocess.CompletedProcess[bytes], op: str, cfg_path: Path
+) -> None:
+    """Translate a bonsai non-zero exit into a typed Python exception.
+
+    Mirrors `internal/nonint/runner.go` exit codes:
+      0 → success (caller checks separately)
+      2 → invalid config        → ValueError (caller bug)
+      3 → runtime failure       → RuntimeError
+      4 → wrong CWD for op      → RuntimeError
+      other → RuntimeError
+    """
+    if result.returncode == BONSAI_EXIT_OK:
+        return
+    msg = _decode_bonsai_error(result, op, cfg_path)
+    if result.returncode == BONSAI_EXIT_INVALID_CONFIG:
+        raise ValueError(msg)
+    raise RuntimeError(msg)
+
+
+# Bootstrap config used when the fixture targets a non-tech-lead agent. Resolved
+# at call time so callers (notably tests) can override via the solver kwargs.
+_DEFAULT_BOOTSTRAP_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "fixtures"
+    / "configs"
+    / "minimal"
+    / ".bonsai.yaml"
+)
+
+
+def _materialize_bonsai_workspace(
+    bonsai_config: Path,
+    workspace: Path,
+    bonsai_binary: str,
+    bootstrap_config: Path | None = None,
+) -> None:
+    """Materialize a Bonsai workspace from `bonsai_config` inside `workspace`.
+
+    Bonsai init only accepts a tech-lead-only config (exit 2 otherwise — see
+    `internal/nonint/runner.go:RunInit`). For non-tech-lead fixtures we:
+      1. init with `bootstrap_config` (the minimal tech-lead config) so the
+         workspace skeleton + .bonsai.yaml exist; then
+      2. add the fixture as an overlay via `bonsai add --from-config`.
+
+    For tech-lead-only fixtures, init alone covers it — no add step.
+
+    Exit-code translation lives in `_raise_for_bonsai_exit`.
+    """
+    workspace.mkdir(parents=True, exist_ok=True)
+    tech_only = _is_tech_lead_only_config(bonsai_config)
+    init_cfg = bonsai_config if tech_only else (bootstrap_config or _DEFAULT_BOOTSTRAP_CONFIG_PATH)
+    if not init_cfg.exists():
+        raise FileNotFoundError(f"init config not found: {init_cfg}")
+    init_result = _run_bonsai(
+        [bonsai_binary, "init", "--non-interactive", "--from-config", str(init_cfg)],
+        cwd=workspace,
+    )
+    _raise_for_bonsai_exit(init_result, "init", init_cfg)
+    if tech_only:
+        return
+    add_result = _run_bonsai(
+        [bonsai_binary, "add", "--non-interactive", "--from-config", str(bonsai_config)],
+        cwd=workspace,
+    )
+    _raise_for_bonsai_exit(add_result, "add", bonsai_config)
+
+
+def _is_tech_lead_only_config(bonsai_config: Path) -> bool:
+    """True iff the fixture config has exactly one agent and it is `tech-lead`.
+
+    For non-tech-lead fixtures we need to follow `bonsai init` (which requires
+    a tech-lead) with `bonsai add` overlays per agent — but our fixtures are
+    single-agent files, so the contract is simpler: tech-lead fixtures go
+    through init alone; everything else gets init-then-add with a tech-lead
+    bootstrap config first. Per the SCHEMA's `workspace_template` semantics,
+    a fixture file describes exactly one agent (the one named in template).
+    """
+    try:
+        cfg = yaml.safe_load(bonsai_config.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return False
+    agents = cfg.get("agents") or {}
+    return isinstance(agents, dict) and list(agents.keys()) == ["tech-lead"]
+
+
+def _materialize_setup_files(workspace: Path, files: list[dict[str, Any]]) -> None:
+    """Write each `{path, content}` entry under `workspace`.
+
+    Path safety: workspace-relative only. Absolute paths and any `..`
+    traversal are rejected at runtime even though the schema validator
+    already enforces it — defense in depth.
+    """
+    for entry in files:
+        rel = entry.get("path")
+        content = entry.get("content", "")
+        if not isinstance(rel, str) or not rel:
+            raise ValueError(f"setup.files entry missing or empty path: {entry!r}")
+        if rel.startswith("/"):
+            raise ValueError(f"setup.files path must be workspace-relative, got {rel!r}")
+        if ".." in Path(rel).parts:
+            raise ValueError(f"setup.files path may not contain `..` traversal: {rel!r}")
+        target = workspace / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
+
+
+def _capture_baseline_hashes(
+    workspace: Path,
+    evaluators: list[dict[str, Any]],
+) -> dict[str, str]:
+    """SHA-256 every path referenced by a `file_unchanged` evaluator.
+
+    Captures BEFORE the agent runs so the scorer can detect drift. Returns a
+    dict keyed by the evaluator's literal `path` value (so `build_scorer`'s
+    lookup matches verbatim). Missing files map to no entry — the
+    `file_unchanged` helper interprets absence as "never existed".
+    """
+    out: dict[str, str] = {}
+    for ev in evaluators:
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("type") != "deterministic" or ev.get("check") != "file_unchanged":
+            continue
+        path = ev.get("path")
+        if not isinstance(path, str) or not path:
+            continue
+        target = Path(path) if Path(path).is_absolute() else workspace / path
+        if target.exists() and target.is_file():
+            out[path] = hashlib.sha256(target.read_bytes()).hexdigest()
+    return out
+
+
+@solver
+def rung3_setup_solver(
+    *,
+    bonsai_config: Path,
+    scenario: dict[str, Any],
+    workspace: Path,
+    bonsai_binary: str = "bonsai",
+    bootstrap_config: Path | None = None,
+) -> Solver:
+    """Setup-phase solver that materializes the workspace and stashes metadata.
+
+    Runs ONCE per task as the first link in the rung-3 chain. After this
+    solver returns, the chain hands off to `claude_code(...)` with `cwd`
+    pointing at `workspace`.
+
+    Side effects on `state.metadata`:
+      - `workspace_root`: Path — for `build_scorer` to resolve relative paths
+      - `baseline_hashes`: dict[str, str] — for `file_unchanged` checks
+    """
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        del generate  # setup-only — we never call the model here
+        _materialize_bonsai_workspace(
+            bonsai_config, workspace, bonsai_binary, bootstrap_config=bootstrap_config
+        )
+        setup_files = (scenario.get("setup") or {}).get("files") or []
+        if setup_files:
+            _materialize_setup_files(workspace, setup_files)
+        baseline = _capture_baseline_hashes(workspace, scenario.get("evaluators") or [])
+        state.metadata = state.metadata or {}
+        state.metadata["workspace_root"] = str(workspace)
+        state.metadata["baseline_hashes"] = baseline
+        return state
+
+    return solve
+
+
 def rung3_bonsai(
     *,
     bonsai_config: Path,
+    scenario: dict[str, Any] | None = None,
     preregistration: PreregistrationConfig | None = None,
     bonsai_binary: str = "bonsai",
+    workspace: Path | None = None,
+    home_dir: Path | None = None,
+    bootstrap_config: Path | None = None,
     **kwargs: Any,
 ) -> Solver:
     """Rung 3 — bare CC plus a Bonsai-materialized `station/` workspace.
 
-    Runs `bonsai init` + `bonsai add` against `bonsai_config` (a fixture path
-    pointing at a `.bonsai.yaml`) inside a fresh temp dir, then invokes
-    `inspect_swe.claude_code` with that dir as `cwd`. This is the only solver
-    we own end-to-end.
+    Runs `bonsai init --non-interactive --from-config <bonsai_config>` inside
+    a fresh `workspace` directory (created on demand if not supplied), writes
+    any `scenario.setup.files`, captures baseline hashes for `file_unchanged`
+    evaluators, then invokes `inspect_swe.claude_code` with that dir as `cwd`.
+    HOME is redirected to `home_dir` (per Plan 38 §Risks #1) to suppress
+    ambient `~/.claude/` inheritance.
 
-    `bonsai_binary` is overrideable for tests / non-default install paths.
+    Args:
+      bonsai_config: Path to a fixture YAML (Bonsai `--from-config` shape).
+      scenario: The fully-loaded scenario dict (from `validate_scenario`).
+        `setup.files` and `evaluators` are read off this. Passing `None`
+        skips setup.files + baseline_hashes (rare; used only when callers
+        want a raw materialized workspace).
+      home_dir: REQUIRED. Empty dir to redirect $HOME inside the sandbox.
+      workspace: Optional pre-allocated workspace path. When omitted, a
+        unique tmp dir is minted under `tempfile.gettempdir()`. Callers
+        (e.g. `scripts/run_validation.py`) mint workspace per
+        `(scenario, rung, seed)` for hermeticity.
+
+    Returns the chained solver: setup → claude_code agent.
     """
     cfg = _validate_preregistration(preregistration)
 
@@ -207,31 +446,29 @@ def rung3_bonsai(
             f"bonsai binary not found: {bonsai_binary} "
             "(install Bonsai first: `go install ./cmd/bonsai` from the Bonsai repo)"
         )
+    if home_dir is None:
+        raise ValueError(
+            "rung3_bonsai requires home_dir to prevent ambient "
+            "~/.claude inheritance — pass an empty tmp dir per plan §Risks #1"
+        )
 
-    workspace = Path(tempfile.gettempdir()) / f"bonsai-eval-rung3-{uuid.uuid4().hex}"
+    if workspace is None:
+        workspace = Path(tempfile.gettempdir()) / f"bonsai-eval-rung3-{uuid.uuid4().hex}"
     workspace.mkdir(parents=True, exist_ok=True)
 
-    # Stage the .bonsai.yaml fixture into the workspace, then materialize.
-    shutil.copy(bonsai_config, workspace / ".bonsai.yaml")
-    # Note: `bonsai init` is interactive in normal use; in P2 we'll either
-    # author non-interactive flags or feed a scripted answer file. For the
-    # bootstrap we record the contract; smoke testing happens in P0.2 (key-gated).
-    subprocess.run(
-        [bonsai_binary, "init", "--non-interactive"],
-        cwd=workspace,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [bonsai_binary, "add", "--from-config", ".bonsai.yaml"],
-        cwd=workspace,
-        check=True,
-        capture_output=True,
+    scenario = scenario or {}
+    setup = rung3_setup_solver(
+        bonsai_config=bonsai_config,
+        scenario=scenario,
+        workspace=workspace,
+        bonsai_binary=bonsai_binary,
+        bootstrap_config=bootstrap_config,
     )
 
-    agent = claude_code(
-        model=cfg.model,
-        cwd=str(workspace),
-        **kwargs,
-    )
-    return as_solver(agent)
+    env = {"HOME": str(home_dir)}
+    agent_kwargs: dict[str, Any] = dict(kwargs)
+    agent_kwargs.setdefault("cwd", str(workspace))
+    agent_kwargs.setdefault("env", env)
+    agent = claude_code(model=cfg.model, **agent_kwargs)
+
+    return chain(setup, as_solver(agent))

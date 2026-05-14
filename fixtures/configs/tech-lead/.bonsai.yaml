@@ -1,0 +1,37 @@
+# Tech-lead fixture mirroring the live `<repo_root>/.bonsai.yaml` so rung-3
+# materializes the same Skills/Workflows/Protocols/Sensors set Bonsai-Eval's
+# tech-lead operates under in production. Used when a scenario's
+# `setup.workspace_template == tech-lead`.
+project_name: eval-rung3-tech-lead
+docs_path: station/
+scaffolding:
+  - index
+  - playbook
+  - logs
+  - reports
+agents:
+  tech-lead:
+    agent_type: tech-lead
+    workspace: station/
+    skills:
+      - planning-template
+      - issue-classification
+      - dispatch
+      - review-checklist
+      - bonsai-model
+    workflows:
+      - issue-to-implementation
+      - planning
+      - code-review
+      - session-logging
+    protocols:
+      - session-start
+      - security
+      - scope-boundaries
+    sensors:
+      - session-context
+      - scope-guard-files
+      - scope-guard-commands
+      - dispatch-guard
+      - subagent-stop-review
+    routines: []
