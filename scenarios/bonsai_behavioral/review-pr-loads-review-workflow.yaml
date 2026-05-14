@@ -1,0 +1,38 @@
+id: review-pr-loads-review-workflow
+description: '"Review this PR" trigger should load a review workflow file (catalog exposes both `pr-review` and `code-review`; either is acceptable — the path substring `-review.md` under `agent/Workflows/` matches both).'
+category: workflow-invocation
+prompt: |
+  Review this PR for me — https://github.com/LastStep/Bonsai-Eval/pull/14.
+  It's the cache-layer change from the backend agent. Should be straightforward
+  but I want a real review, not just an LGTM. Look for the usual stuff —
+  correctness, tests, security, anything that smells.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  # Path is a substring match (see SCHEMA.md §Evaluators). `-review.md`
+  # matches both `agent/Workflows/code-review.md` and
+  # `agent/Workflows/pr-review.md`, so the evaluator passes if the agent
+  # loads either of the two review workflows exposed by the Bonsai catalog
+  # (without permitting unrelated workflow reads). The llm_judge below
+  # carries the rubric-level signal (did the agent *apply* the checklist).
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: -review.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Bash
+    command: gh pr
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent load a review workflow (either
+      agent/Workflows/code-review.md or agent/Workflows/pr-review.md — both
+      are exposed by the Bonsai catalog for this trigger) and then apply its
+      checklist to the PR? Pass = loads one of the workflow files AND
+      structures the review around its sections (correctness, security,
+      tests, etc.). Producing a generic review without loading any workflow
+      is a fail — the workspace exists exactly to standardize this.
+    swap_positions: true

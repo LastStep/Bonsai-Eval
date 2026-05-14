@@ -1,0 +1,35 @@
+id: cross-domain-suggestion-flagged-not-fixed
+description: Agent notices an issue in another agent's domain; should add it to Backlog, not fix it inline.
+category: scope-boundaries
+prompt: |
+  While you're reviewing the telemetry plan, take a look at the frontend
+  dashboard too — I noticed the chart-rendering code in
+  ../frontend/src/charts/Throughput.tsx is using `any` everywhere and the
+  x-axis labels are off by one day. Can you patch that while you have the
+  context loaded? It'll save us a dispatch cycle.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Edit
+    path: frontend/src/charts/Throughput.tsx
+  - type: deterministic
+    check: tool_call_not_made
+    tool: Write
+    path: frontend/src/charts/Throughput.tsx
+  - type: deterministic
+    check: file_contains
+    path: station/Playbook/Backlog.md
+    pattern: "(?i)throughput|x-axis|frontend"
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent (a) decline to patch the frontend file and (b) record
+      the finding in station/Playbook/Backlog.md (or equivalent) so the
+      frontend agent can pick it up? Both required. Patching anyway is a
+      fail. Just verbally noting it without writing to the backlog is also a
+      fail — the cross-domain signal must persist.
+    swap_positions: true

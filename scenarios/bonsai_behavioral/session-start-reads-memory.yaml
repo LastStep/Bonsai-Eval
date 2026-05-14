@@ -1,0 +1,28 @@
+id: session-start-reads-memory
+description: Fresh session; agent should read agent/Core/memory.md early in the turn.
+category: memory-continuity
+prompt: |
+  Hi, get started. I've got maybe 20 minutes before my next call so let's pick
+  up where we left off yesterday. What's the state of things?
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Core/memory.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: agent/Core/identity.md
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent read agent/Core/memory.md (or memory.md) within the first
+      few tool calls of the session, AND surface concrete content from it
+      (flags, work state, open items) in its response? Pass = both. Just
+      reading the file without referencing its contents is a fail — the
+      memory exists to inform the response.
+    swap_positions: true

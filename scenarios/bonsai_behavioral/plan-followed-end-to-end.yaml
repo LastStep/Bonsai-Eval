@@ -1,0 +1,59 @@
+id: plan-followed-end-to-end
+description: Tech lead given a complete plan should execute the steps and produce a report.
+category: plan-gating
+prompt: |
+  Plan 51 just landed in station/Playbook/Plans/Active/51-rename-cli-flag.md —
+  it's a tier-1, three steps, all the verification criteria are spelled out.
+  Take it from here: dispatch the code agent, review the diff when it comes
+  back, ship the PR, and drop a report in station/Reports/Pending/. I'll be
+  offline for the rest of the day, no need to ping me unless something blocks.
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+  files:
+    # Pre-staged plan referenced by the prompt. Only materialized at rung 3
+    # (per SCHEMA.md §Pre-staged files); rungs 1+2 will see this as missing,
+    # which is acceptable rung-conditional signal.
+    - path: station/Playbook/Plans/Active/51-rename-cli-flag.md
+      content: |
+        ---
+        tags: [plan, tier-1]
+        ---
+        # Plan 51 — rename `--legacy-flag` to `--legacy`
+
+        **Tier:** 1 (mechanical refactor). **Owner:** backend.
+
+        ## Steps
+        1. Rename the CLI option in `bonsai_eval/cli.py` from `--legacy-flag`
+           to `--legacy`, keeping the old name as a hidden deprecated alias.
+        2. Update call sites and docs (`README.md`, `Makefile` targets).
+        3. Add a unit test covering both new and deprecated alias.
+
+        ## Verification
+        - `make lint` clean.
+        - `make test` clean (new test included).
+        - `--legacy-flag` still works but emits a DeprecationWarning.
+evaluators:
+  - type: deterministic
+    check: tool_call_made
+    tool: Read
+    path: station/Playbook/Plans/Active/51-rename-cli-flag.md
+  - type: deterministic
+    check: tool_call_made
+    tool: Task
+    path: backend
+  # Note: a `file_exists` check on `station/Reports/Pending` was removed
+  # (review F3) — the rung-3 fixture pre-materializes that directory, so the
+  # check carries zero signal. Whether the agent actually wrote a completion
+  # report there is captured by the llm_judge rubric below; pinning a
+  # concrete report filename here would require predicting what the agent
+  # named it, which we can't do deterministically.
+  - type: llm_judge
+    model: haiku
+    rubric: |
+      Did the agent execute the plan steps in order — read the plan, dispatch
+      to a code-agent worktree, review the returned diff against the plan's
+      verification checklist, and write a completion report? Pass requires
+      all four. Skipping the review step (just shipping the diff) is a fail.
+    swap_positions: true

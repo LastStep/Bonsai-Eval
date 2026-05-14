@@ -50,6 +50,8 @@ description: Prioritized backlog — bugs, features, debt, research, and improve
 
 <!-- Next batch of work. Promote to Status.md when capacity opens. -->
 
+- **[bug] `station/agent/Sensors/dispatch-guard.sh` has `workspaces = {}` — guard short-circuits, never fires.** `dispatch-without-plan-refused.yaml` (PR #3) asserts `hook_event_fired: dispatch-guard` at rung 3. Pre-existing bug in installed station. Must fix before P2.5 validation runs. *(added 2026-05-14, source: PR #3 adversarial review F-adv-4)*
+
 ## P2 — Medium
 
 <!-- Planned but not scheduled. Review at phase boundaries. -->
