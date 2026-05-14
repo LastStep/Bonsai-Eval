@@ -56,6 +56,18 @@ else:
 # tech-lead workspace and only the tech-lead agent invokes it.
 WORKSPACE = (repo_root / "station").resolve()
 
+# Skip enforcement when CWD is under a dispatched-agent worktree. The Agent
+# tool's `isolation: worktree` creates `.claude/worktrees/<agent-id>/` per
+# dispatch; those agents are CODE agents (not tech-lead) and must edit their
+# own scope (bonsai_eval/, scripts/, tests/) freely. Tech-lead identity
+# applies only when CWD is the main repo checkout. See PR #6 review notes.
+worktrees_root = (repo_root / ".claude" / "worktrees").resolve()
+try:
+    Path.cwd().resolve().relative_to(worktrees_root)
+    sys.exit(0)
+except ValueError:
+    pass
+
 # Files the tech-lead is allowed to edit OUTSIDE station/. Keep this tiny.
 EXPLICIT_ALLOW = {
     (repo_root / ".bonsai.yaml").resolve(),
