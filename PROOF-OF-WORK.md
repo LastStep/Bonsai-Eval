@@ -120,9 +120,31 @@ _pending_
 
 _pending_
 
-### Caveats
+### Caveats / known limitations
 
-_pending_
+- **Fixture coverage at P2.5:** All 12 starter scenarios use the `minimal`
+  Bonsai fixture (tech-lead-only). The `init` → `add` rung-3 materialization
+  path (multi-agent fixtures like `backend`, `security`) is unit-tested but
+  not exercised under live benchmark. Coverage of those paths is deferred to
+  Plan §P4 (config A/B sweep) and §P5 (SWE-bench Pro).
+- **Inspect AI seeding:** `inspect_ai.eval()` exposes no RNG seed argument as
+  of v0.3.219. The 3-seed enumeration in `scripts/run_validation.py` provides
+  per-run path uniqueness + audit-trail granularity but does NOT pin sampling
+  RNG. `ACTIVE_PREREGISTRATION.temperature=0.0` narrows residual variance;
+  tool-loop nondeterminism (file mtimes, network jitter, Docker startup) is
+  the irreducible residual.
+- **Sandbox-cwd plumbing (rung-2/rung-3, M-1):** `inspect_swe.claude_code`
+  executes the agent inside the Docker container; the `cwd` + `HOME` kwargs
+  resolve to in-container paths (see source citation in
+  `bonsai_eval/solvers/rungs.py` docstring). The current materialization
+  writes to host paths, so a live rung-2/rung-3 run against
+  `sandbox="docker"` will see an empty workspace inside the container. Two
+  follow-up fix paths (local sandbox vs. bind-mount via sandbox spec) are
+  tracked in the Backlog. Unit tests pass because they mock the bonsai
+  subprocess seam and never spawn Docker; the limitation only materializes
+  during the live paid run.
+
+_pending — populated after live P2.5 run completes_
 
 ---
 

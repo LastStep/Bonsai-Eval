@@ -15,7 +15,25 @@
 # `bonsai_eval/scorers/deterministic.py:_HOOK_MARKERS["scope-guard-files"]`).
 # The literal prefix `BLOCKED: Tech Lead Agent cannot modify` MUST appear
 # unchanged — touch the marker here only with a matching edit in the scorer.
+#
+# # Repo-root resolution (precedence)
+#
+# 1. Positional `$1` (production wiring — `station/.claude/settings.json:8`
+#    invokes `bash scope-guard-files.sh "<repo-root>"`). When present, `$1`
+#    is exported as `BONSAI_SCOPE_GUARD_REPO_ROOT` so the python heredoc
+#    sees it. This is the path that matters at rung-2/rung-3 inside an
+#    Inspect sandbox where CWD ≠ host repo.
+# 2. Pre-existing `BONSAI_SCOPE_GUARD_REPO_ROOT` env var (test seam — tests
+#    set this directly without a positional arg; honored when `$1` absent).
+# 3. `Path.cwd()` fallback (legacy).
+#
+# `$1` wins because production wires it explicitly; tests set the env var
+# directly without a positional and so still control the value.
 set -euo pipefail
+
+if [ -n "${1:-}" ]; then
+  export BONSAI_SCOPE_GUARD_REPO_ROOT="$1"
+fi
 
 INPUT=$(cat)
 

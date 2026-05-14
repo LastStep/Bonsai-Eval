@@ -290,3 +290,42 @@ def test_setup_solver_propagates_invalid_config(
     state = _FakeState()
     with pytest.raises(ValueError, match="bad shape"):
         asyncio.run(setup(state, MagicMock()))  # type: ignore[arg-type]
+
+
+# --- subprocess timeout (L-3) ---------------------------------------------
+
+
+def test_run_bonsai_wraps_timeout_as_runtime_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hung `bonsai` invocation must raise `RuntimeError`, not propagate
+    `subprocess.TimeoutExpired` verbatim — that would leak a bare
+    timeout traceback into the agent-facing solver error.
+    """
+
+    def fake_subprocess_run(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise subprocess.TimeoutExpired(cmd="bonsai", timeout=60)
+
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    with pytest.raises(RuntimeError, match="timed out"):
+        rungs_module._run_bonsai(["bonsai", "init"], cwd=tmp_path)
+
+
+def test_run_bonsai_passes_timeout_to_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_run_bonsai` must forward `timeout=_RUN_BONSAI_TIMEOUT_S` to
+    `subprocess.run`. Without this, a hung bonsai blocks the sweep
+    forever.
+    """
+    captured: dict[str, Any] = {}
+
+    def fake_subprocess_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured.update(kwargs)
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=args[0], returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    rungs_module._run_bonsai(["bonsai", "init"], cwd=tmp_path)
+    assert captured.get("timeout") == rungs_module._RUN_BONSAI_TIMEOUT_S

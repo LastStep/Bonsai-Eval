@@ -228,8 +228,8 @@ def test_budget_abort_writes_partial_parquet(tmp_path: Path) -> None:
     # Synthetic invoker: every run costs $5; budget is $7. The first run
     # consumes $5 (under budget), the second pushes cumulative to $10 (over).
     # The third run must be emitted as `RunResult.aborted`.
-    def fake_invoker(spec: rv.RunSpec, model: str) -> rv.EvalOutcome:
-        del spec, model
+    def fake_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model, kwargs
         return rv.EvalOutcome(
             score=1.0,
             evaluator_details=[],
@@ -263,8 +263,8 @@ def test_run_sweep_records_invoker_exception(tmp_path: Path) -> None:
     del tmp_path
     specs = rv.enumerate_runs(["a"], ["rung1"], 1)
 
-    def broken_invoker(spec: rv.RunSpec, model: str) -> rv.EvalOutcome:
-        del spec, model
+    def broken_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model, kwargs
         raise RuntimeError("synthetic boom")
 
     results = rv.run_sweep(specs, model="x", budget_usd=20.0, eval_invoker=broken_invoker)
@@ -310,8 +310,8 @@ def test_main_executes_with_synthetic_invoker(
     pick = sorted(p.stem for p in SCENARIOS_DIR.glob("*.yaml"))[0]
     out = tmp_path / "smoke.parquet"
 
-    def fake_invoker(spec: rv.RunSpec, model: str) -> rv.EvalOutcome:
-        del spec, model
+    def fake_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model, kwargs
         return rv.EvalOutcome(
             score=1.0,
             evaluator_details=[{"check": "smoke", "passed": True}],
@@ -343,6 +343,159 @@ def test_main_executes_with_synthetic_invoker(
     df = duckdb.sql(f"SELECT * FROM read_parquet('{out}')").df()
     assert len(df) == 1
     assert df.iloc[0]["score"] == 1.0
+
+
+# --- budget-knob forwarding -----------------------------------------------
+
+
+def test_invoker_receives_budget_kwargs() -> None:
+    """`run_sweep` must forward token_limit/time_limit/cost_limit into invoker."""
+    captured: list[dict[str, object]] = []
+
+    def recording_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model
+        captured.append(dict(kwargs))
+        return rv.EvalOutcome(score=1.0, input_tokens=0, output_tokens=0)
+
+    specs = rv.enumerate_runs(["a"], ["rung1"], 1)
+    rv.run_sweep(
+        specs,
+        model="x",
+        budget_usd=20.0,
+        token_limit=163_840,  # 8192 * 20
+        time_limit=600,
+        eval_invoker=recording_invoker,
+    )
+    assert len(captured) == 1
+    kwargs = captured[0]
+    assert kwargs.get("token_limit") == 163_840
+    assert kwargs.get("time_limit") == 600
+    # cost_limit must be the remaining budget envelope (first run = full
+    # budget since cumulative_cost is 0).
+    assert kwargs.get("cost_limit") == pytest.approx(20.0)
+
+
+def test_invoker_omits_unset_budget_kwargs() -> None:
+    """When `_invoke_eval` callers leave `token_limit`/`time_limit` as None,
+    the kwarg is passed through as None — the actual `inspect_eval` call
+    inside `_invoke_eval` then drops None keys. The contract at the
+    invoker boundary is: knobs always present (None means unset).
+    """
+    captured: list[dict[str, object]] = []
+
+    def recording_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model
+        captured.append(dict(kwargs))
+        return rv.EvalOutcome(score=1.0, input_tokens=0, output_tokens=0)
+
+    specs = rv.enumerate_runs(["a"], ["rung1"], 1)
+    rv.run_sweep(
+        specs,
+        model="x",
+        budget_usd=20.0,
+        eval_invoker=recording_invoker,
+        # token_limit + time_limit deliberately omitted
+    )
+    assert captured[0].get("token_limit") is None
+    assert captured[0].get("time_limit") is None
+
+
+def test_invoke_eval_drops_unset_kwargs_from_inspect_eval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_invoke_eval` MUST NOT leak `token_limit=None` / `time_limit=None`
+    into `inspect_ai.eval()` when the caller leaves them unset.
+
+    This pins the "default behavior preserved" contract: callers that
+    don't opt into budget caps see the same `inspect_eval(task, model=...)`
+    call shape as the pre-amend implementation.
+    """
+    # Pick the first real scenario id so `_invoke_eval`'s task-fn lookup
+    # succeeds — we monkeypatch the eval call to capture kwargs.
+    pick = sorted(p.stem for p in SCENARIOS_DIR.glob("*.yaml"))[0]
+
+    captured: dict[str, object] = {}
+
+    def fake_inspect_eval(task: object, **kwargs: object) -> list[object]:
+        captured.update(kwargs)
+        captured["_task"] = task
+        # Return [] so `_invoke_eval` short-circuits with "no logs"
+        # error_msg — we don't care about the post-call path here.
+        return []
+
+    # Monkeypatch the lazy import target. `_invoke_eval` does
+    # `from inspect_ai import eval as inspect_eval` inside the function,
+    # so we patch `inspect_ai.eval` at the module level.
+    import inspect_ai
+
+    monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval)
+
+    spec = rv.RunSpec(scenario_id=pick, rung="rung2", seed=0)
+    outcome = rv._invoke_eval(spec, model="anthropic/claude-haiku-4-5")
+    # No knobs forwarded → kwargs has model only.
+    assert "token_limit" not in captured
+    assert "time_limit" not in captured
+    assert "cost_limit" not in captured
+    assert captured.get("model") == "anthropic/claude-haiku-4-5"
+    # Sanity: we hit the "no logs" branch.
+    assert "no logs" in outcome.error_msg
+
+
+def test_invoke_eval_forwards_set_kwargs_to_inspect_eval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When a caller sets `token_limit`/`time_limit`/`cost_limit`, the
+    values reach `inspect_ai.eval()` verbatim.
+    """
+    pick = sorted(p.stem for p in SCENARIOS_DIR.glob("*.yaml"))[0]
+
+    captured: dict[str, object] = {}
+
+    def fake_inspect_eval(task: object, **kwargs: object) -> list[object]:
+        captured.update(kwargs)
+        return []
+
+    import inspect_ai
+
+    monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval)
+
+    spec = rv.RunSpec(scenario_id=pick, rung="rung2", seed=0)
+    rv._invoke_eval(
+        spec,
+        model="anthropic/claude-haiku-4-5",
+        token_limit=163_840,
+        time_limit=600,
+        cost_limit=15.0,
+    )
+    assert captured.get("token_limit") == 163_840
+    assert captured.get("time_limit") == 600
+    assert captured.get("cost_limit") == 15.0
+
+
+def test_run_sweep_per_run_cost_limit_shrinks_with_cumulative_cost() -> None:
+    """`cost_limit` forwarded to each run = remaining budget envelope.
+
+    Run 1 sees the full $20; run 2 sees ($20 - cost_of_run_1); etc.
+    Once remaining hits 0, `cost_limit` is forwarded as None and the
+    post-hoc abort path takes over.
+    """
+    captured: list[float | None] = []
+
+    def recording_invoker(spec: rv.RunSpec, model: str, **kwargs: object) -> rv.EvalOutcome:
+        del spec, model
+        captured.append(kwargs.get("cost_limit"))  # type: ignore[arg-type]
+        # Each run costs $5 (5M input tokens @ $1/MTok).
+        return rv.EvalOutcome(score=1.0, input_tokens=5_000_000, output_tokens=0)
+
+    specs = rv.enumerate_runs(["a", "b", "c"], ["rung1"], 1)
+    rv.run_sweep(
+        specs,
+        model="x",
+        budget_usd=20.0,
+        eval_invoker=recording_invoker,
+    )
+    # Run 1 sees $20 remaining; run 2 sees $15; run 3 sees $10.
+    assert captured == [pytest.approx(20.0), pytest.approx(15.0), pytest.approx(10.0)]
 
 
 # --- valid-rung guard reflects bonsai_behavioral.py contract -------------

@@ -152,7 +152,12 @@ class EvalOutcome:
 
 # `EvalInvoker` is the type of the per-run evaluator. Tests monkeypatch
 # this module's `_invoke_eval` attribute with a synthetic callable.
-EvalInvoker = Callable[[RunSpec, str], EvalOutcome]
+#
+# Signature: `(spec, model, *, token_limit, time_limit, cost_limit) -> EvalOutcome`.
+# All three budget knobs are keyword-only so tests can pass `**budget` dicts
+# without positional-arg gymnastics, and so future kwargs (e.g.
+# `message_limit`) can be added without breaking existing call sites.
+EvalInvoker = Callable[..., EvalOutcome]
 
 
 def _estimate_cost_usd(input_tokens: int, output_tokens: int) -> float:
@@ -213,13 +218,36 @@ def enumerate_runs(
 # --- production eval invocation ---------------------------------------------
 
 
-def _invoke_eval(spec: RunSpec, model: str) -> EvalOutcome:
+def _invoke_eval(
+    spec: RunSpec,
+    model: str,
+    *,
+    token_limit: int | None = None,
+    time_limit: int | None = None,
+    cost_limit: float | None = None,
+) -> EvalOutcome:
     """Run a single (scenario, rung, seed) via `inspect_ai.eval`.
 
     Imports Inspect lazily so unit tests (which monkeypatch this function)
     never pay the import cost or trip on `anthropic` being absent. The
     task factory is resolved by name via the `bonsai_eval.tasks.bonsai_behavioral`
     module (each `@task` function is callable as `module.<snake_id>`).
+
+    Budget knobs map to `inspect_ai.eval()` kwargs (verified against
+    inspect-ai 0.3.219 signature — all three are first-class):
+      - `token_limit`: total tokens budgeted for the task (input + output).
+        Caller derives from `args.max_tokens * 20` to cover ~20 tool-call
+        rounds; Inspect aborts the task when the total crosses this.
+      - `time_limit`: per-task wall-clock cap in seconds. Maps to
+        `args.max_task_time_s`.
+      - `cost_limit`: USD ceiling enforced by Inspect's cost-tracking
+        layer. The CLI forwards the REMAINING budget (`budget_usd -
+        cumulative_cost`) so a single overrun run doesn't blow past the
+        envelope; the post-hoc soft abort in `run_sweep` is the
+        secondary guard.
+
+    `None` for any knob means "no Inspect-level cap" — the caller
+    relies on cumulative-cost tracking + post-hoc abort.
     """
     from inspect_ai import eval as inspect_eval  # noqa: PLC0415
 
@@ -243,9 +271,21 @@ def _invoke_eval(spec: RunSpec, model: str) -> EvalOutcome:
         seed=spec.seed,
     )
 
+    # Build the kwargs dict so unset knobs don't leak `None` into
+    # `inspect_eval` (Inspect treats `None` as "no cap" already, but
+    # omitting the kwarg keeps the call site honest and the test
+    # assertions sharp).
+    eval_kwargs: dict[str, Any] = {"model": model}
+    if token_limit is not None:
+        eval_kwargs["token_limit"] = token_limit
+    if time_limit is not None:
+        eval_kwargs["time_limit"] = time_limit
+    if cost_limit is not None:
+        eval_kwargs["cost_limit"] = cost_limit
+
     started = _dt.datetime.now(_dt.UTC)
     try:
-        logs = inspect_eval(task, model=model)
+        logs = inspect_eval(task, **eval_kwargs)
     except Exception as exc:  # noqa: BLE001 — top-level boundary
         return EvalOutcome(
             score=float("nan"),
@@ -319,6 +359,8 @@ def run_sweep(
     *,
     model: str,
     budget_usd: float,
+    token_limit: int | None = None,
+    time_limit: int | None = None,
     eval_invoker: EvalInvoker | None = None,
 ) -> list[RunResult]:
     """Drive the sweep; respect the budget; return one `RunResult` per spec.
@@ -327,6 +369,14 @@ def run_sweep(
     callable. When cumulative cost > budget, remaining specs are emitted
     as aborted rows so the parquet has a full enumeration with explicit
     `budget exceeded` markers on the tail.
+
+    `token_limit` / `time_limit` flow through to `_invoke_eval` unchanged.
+    `cost_limit` is computed PER-RUN as the remaining budget envelope —
+    each call forwards `max(budget_usd - cumulative_cost, 0.0)`. This
+    couples Inspect's in-run cost guard to the sweep-level budget so a
+    single runaway run can't burn the entire envelope before
+    post-hoc abort kicks in. When the remaining budget is zero we abort
+    BEFORE invoking — no point starting a run with a $0 ceiling.
     """
     invoker: EvalInvoker = eval_invoker if eval_invoker is not None else _invoke_eval
     results: list[RunResult] = []
@@ -336,8 +386,15 @@ def run_sweep(
         if aborted:
             results.append(RunResult.aborted(spec, "budget exceeded — sweep aborted"))
             continue
+        remaining = max(budget_usd - cumulative_cost, 0.0)
         try:
-            outcome = invoker(spec, model)
+            outcome = invoker(
+                spec,
+                model,
+                token_limit=token_limit,
+                time_limit=time_limit,
+                cost_limit=remaining if remaining > 0 else None,
+            )
         except Exception as exc:  # noqa: BLE001
             results.append(RunResult.errored(spec, exc))
             continue
@@ -467,7 +524,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         _print_dry_run(specs, args.budget_usd)
         return 0
-    results = run_sweep(specs, model=args.model, budget_usd=args.budget_usd)
+    # token_limit covers total task budget — args.max_tokens is the
+    # per-response cap; multiplier of 20 covers ~20 tool-call rounds, which
+    # comfortably brackets every scenario in the suite at the time of
+    # writing. Tune this if Inspect's token_limit semantics shift or if
+    # scenarios grow past ~20 turns.
+    token_limit = args.max_tokens * 20 if args.max_tokens else None
+    time_limit = args.max_task_time_s if args.max_task_time_s else None
+    results = run_sweep(
+        specs,
+        model=args.model,
+        budget_usd=args.budget_usd,
+        token_limit=token_limit,
+        time_limit=time_limit,
+    )
     write_parquet(results, args.output)
     passed = sum(1 for r in results if r.score == 1.0)
     failed = sum(1 for r in results if r.score == 0.0)

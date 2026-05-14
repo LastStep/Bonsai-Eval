@@ -9,6 +9,43 @@ All 3 factories enforce pre-registration via `assert_preregistration` at entry.
 A solver caller that wants to run a different model / temp / tool-set must open
 a new pre-reg claim and update `ACTIVE_PREREGISTRATION` in
 `bonsai_eval.preregistration` — they cannot smuggle overrides through here.
+
+# Sandbox / cwd semantics (M-1, 2026-05-14 adversarial review)
+
+`bonsai_eval.tasks.bonsai_behavioral._sandbox_for_rung` declares
+`sandbox="docker"` for rung-2 + rung-3. Per
+`inspect_swe._claude_code.claude_code.py:281-291`, the agent's
+`cwd` + `env={"HOME": ...}` are passed to `sbox.exec_remote(...)` —
+which executes the command INSIDE the Docker container. The host paths
+we mint in `scripts/run_validation.py:RunSpec.home_dir` / `workspace_dir`
+will not exist in the container by default.
+
+Today's state — KNOWN GAP, deferred to a follow-up plan item:
+  - The materialize step (`_run_bonsai`) runs on the HOST and writes to
+    HOST paths. Inside the sandbox container, those paths are absent,
+    so the agent sees an empty workspace at the host path it's `cd`-ed
+    into.
+  - This means rung-2 + rung-3 against `sandbox="docker"` are
+    plumbing-broken at the moment. The unit-test surface (which mocks
+    `_run_bonsai` + never spawns Docker) still validates the
+    orchestration logic.
+
+Two viable fixes for a follow-up plan item (track in Backlog):
+  (i)  Switch tasks to `sandbox=None` (local) for rung-2/rung-3, which
+       makes `cwd` a host path and the existing materialization is
+       directly usable. Loses container isolation — accept if the
+       behavioral suite doesn't need it.
+  (ii) Bind-mount the host workspace into the container via Inspect's
+       sandbox spec (`SandboxEnvironmentSpec` with a Docker-compose
+       `volumes:` entry pointing at the host workspace path). Preserves
+       isolation but requires per-run docker-compose templating since
+       the workspace path is unique per (scenario, rung, seed).
+
+Tech lead has been notified — this docstring + a Backlog entry will
+flag the gap until the follow-up plan item lands. Until then, the
+`scripts/run_validation.py` orchestration ships with the documented
+limitation that rung-2/3 require local-sandbox semantics to work
+end-to-end against a live model.
 """
 
 from __future__ import annotations
@@ -156,8 +193,34 @@ def rung2_bare_cc(
 # The real implementation calls `subprocess.run` exactly; tests replace this
 # module attribute with a fake that records args + writes deterministic
 # fixture output to the workspace. NO real `bonsai init` runs in pytest.
+#
+# `_RUN_BONSAI_TIMEOUT_S` caps a single `bonsai init` / `bonsai add` invocation
+# at 60s. Bonsai is a Go binary that does a one-shot config render — any run
+# longer than this means something is wedged (network mount stalled, host
+# under disk pressure, etc.). Hanging the whole sweep on a single materialize
+# step is worse than failing the run with an explicit timeout.
+_RUN_BONSAI_TIMEOUT_S = 60
+
+
 def _run_bonsai(args: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(args, cwd=cwd, check=False, capture_output=True)
+    """Invoke `bonsai` with a hard wall-clock cap.
+
+    Raises `RuntimeError` (wrapping `subprocess.TimeoutExpired`) on timeout
+    so the rung-3 setup solver surfaces a meaningful error rather than
+    leaving the agent hanging. Tests monkeypatch this entire function.
+    """
+    try:
+        return subprocess.run(
+            args,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            timeout=_RUN_BONSAI_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"bonsai invocation timed out after {_RUN_BONSAI_TIMEOUT_S}s: args={args} cwd={cwd}"
+        ) from exc
 
 
 def _decode_bonsai_error(
