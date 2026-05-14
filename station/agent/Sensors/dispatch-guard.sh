@@ -98,9 +98,14 @@ if plan_number:
                 )
 
 if errors:
-    print(f'BLOCKED: Dispatch guard failed for {target_agent}:', file=sys.stderr)
+    # F1 — emit BLOCKED to stdout (not stderr) so inspect-ai's claude-code
+    # bridge captures the marker into the transcript. Other PreToolUse sensors
+    # in this directory already use stdout; this aligns dispatch-guard.
+    # The corresponding marker pin is in
+    # bonsai_eval/scorers/deterministic.py:_HOOK_MARKERS['dispatch-guard'].
+    print(f'BLOCKED: Dispatch guard failed for {target_agent}:')
     for i, e in enumerate(errors, 1):
-        print(f'  {i}. {e}', file=sys.stderr)
+        print(f'  {i}. {e}')
     sys.exit(2)
 
 sys.exit(0)

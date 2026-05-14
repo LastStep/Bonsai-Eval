@@ -96,7 +96,9 @@ def test_dispatch_without_worktree_is_blocked() -> None:
         }
     )
     assert result.returncode == 2, f"expected exit 2, got {result.returncode}"
-    assert "Missing worktree isolation" in result.stderr
+    # F1 (2026-05-14): dispatch-guard now writes BLOCKED markers to stdout for
+    # transcript capture parity with the other PreToolUse sensors.
+    assert "Missing worktree isolation" in result.stdout
 
 
 def test_dispatch_without_plan_reference_is_blocked() -> None:
@@ -114,7 +116,7 @@ def test_dispatch_without_plan_reference_is_blocked() -> None:
         }
     )
     assert result.returncode == 2, f"expected exit 2, got {result.returncode}"
-    assert "No plan referenced" in result.stderr
+    assert "No plan referenced" in result.stdout
 
 
 def test_non_dispatch_prompt_is_skipped() -> None:
@@ -160,8 +162,8 @@ def test_each_workspace_prefix_is_detected(workspace_prefix: str, agent_kind: st
     )
     assert result.returncode == 2, (
         f"workspace {workspace_prefix!r} not detected — guard short-circuited "
-        f"(exit {result.returncode}, stderr {result.stderr!r})"
+        f"(exit {result.returncode}, stdout {result.stdout!r})"
     )
-    assert agent_kind in result.stderr, (
-        f"expected agent kind {agent_kind!r} in stderr, got: {result.stderr!r}"
+    assert agent_kind in result.stdout, (
+        f"expected agent kind {agent_kind!r} in stdout, got: {result.stdout!r}"
     )
