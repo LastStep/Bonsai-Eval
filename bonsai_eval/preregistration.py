@@ -109,14 +109,15 @@ def assert_preregistration(cfg: PreregistrationConfig, expected: Preregistration
 
 # --- Active claim's locked values ---
 # Update this only when a new claim is opened. Changing it mid-measurement breaks
-# the pre-registration commitment. The judge_prompt_sha256 placeholder will be
-# replaced once the judge prompt template is finalized in P2 — until then, the
-# value below is the SHA-256 of the literal string "PLACEHOLDER_JUDGE_PROMPT_V0"
-# so the assertion plumbing is testable.
-_PLACEHOLDER_JUDGE_PROMPT_SHA256 = (
-    # python -c "import hashlib; print(hashlib.sha256(b'PLACEHOLDER_JUDGE_PROMPT_V0').hexdigest())"
-    "f5fe124dae5acb3a5e9bbff764738eb3d0be55a86b4cd585e2c4b476eada6cc3"
-)
+# the pre-registration commitment. The judge_prompt_sha256 is the SHA-256 of the
+# canonical judge prompt template (P2.3, Plan 38 §Risks #4):
+#   bonsai_eval/scorers/templates/default_v1.txt
+# Regenerate via:
+#   python -c "import hashlib, pathlib; \
+#     print(hashlib.sha256(pathlib.Path('bonsai_eval/scorers/templates/default_v1.txt').read_bytes()).hexdigest())"
+# The judge code at import time recomputes this hash and asserts it matches —
+# if you edit the template, this constant must be updated in the same commit.
+_JUDGE_PROMPT_TEMPLATE_SHA256 = "a17cbe4463c4f8bac7c4d76537bd3a63651fe41606574f6ef002882559fded04"
 
 ACTIVE_PREREGISTRATION = PreregistrationConfig(
     model="anthropic/claude-haiku-4-5",
@@ -124,7 +125,7 @@ ACTIVE_PREREGISTRATION = PreregistrationConfig(
     max_tokens=8192,
     allowed_tools=frozenset({"Bash", "Read", "Edit", "Write", "Glob", "Grep"}),
     judge_model="anthropic/claude-haiku-4-5",
-    judge_prompt_sha256=_PLACEHOLDER_JUDGE_PROMPT_SHA256,
+    judge_prompt_sha256=_JUDGE_PROMPT_TEMPLATE_SHA256,
     # Solver-stack version pins — must equal the constants in
     # `bonsai_eval.solvers.rungs`. Drift between these two locations is
     # machine-enforced by `_validate_versions_match_preregistration`.

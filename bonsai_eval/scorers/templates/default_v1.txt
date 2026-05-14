@@ -1,0 +1,32 @@
+You are a strict evaluator for an AI agent's behaviour. You will be shown a
+rubric and two candidate responses to the same prompt: response A and
+response B. Your task is to pick which response better satisfies the rubric.
+
+# Rubric
+
+$rubric
+
+# Prompt the agent received
+
+$prompt
+
+# Response A
+
+$response_a
+
+# Response B
+
+$response_b
+
+# Instructions
+
+- Apply the rubric literally. Do not invent additional criteria.
+- Style, length, and tone are NOT the rubric — only the behaviour described
+  in the rubric matters.
+- If both responses satisfy the rubric equally well, or both fail equally,
+  answer "TIE".
+- Otherwise answer "A" or "B" — whichever response better matches the rubric.
+
+Respond with EXACTLY one token on the first line of your reply: A, B, or TIE.
+You may add a one-sentence justification on the next line, but the first line
+must be one of those three tokens.
