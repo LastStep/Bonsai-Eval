@@ -66,6 +66,27 @@ REQUIRED_TOP_LEVEL_FIELDS: tuple[str, ...] = (
 
 DEFAULT_SCENARIOS_DIR = Path("scenarios/bonsai_behavioral")
 
+# Path to the installed station's sensor hooks. Used to validate
+# `hook_event_fired.hook` values against the set of real hook stems
+# (e.g. `scope-guard-files`, `dispatch-guard`). Resolved relative to the
+# repo root (parent of `scripts/`).
+DEFAULT_SENSORS_DIR = Path(__file__).resolve().parent.parent / "station" / "agent" / "Sensors"
+
+
+def discover_known_hooks(sensors_dir: Path = DEFAULT_SENSORS_DIR) -> frozenset[str]:
+    """Return the set of valid hook ids — stems of `*.sh` files in `sensors_dir`.
+
+    If the directory does not exist (e.g. running the validator from an
+    unbootstrapped checkout), return an empty set; hook-name validation is
+    then skipped rather than producing spurious failures.
+    """
+    if not sensors_dir.exists():
+        return frozenset()
+    return frozenset(p.stem for p in sensors_dir.glob("*.sh") if p.is_file())
+
+
+KNOWN_HOOKS: frozenset[str] = discover_known_hooks()
+
 
 class ScenarioValidationError(Exception):
     """Raised when a scenario file fails the structural schema."""
@@ -109,6 +130,17 @@ def _validate_deterministic(evaluator: dict[str, Any], ctx: str) -> None:
             isinstance(evaluator.get("hook"), str) and evaluator["hook"],
             f"{ctx}: deterministic check `hook_event_fired` requires `hook`",
         )
+        # Cross-check against installed sensor hooks. Skip if the sensors
+        # directory wasn't discovered (KNOWN_HOOKS is empty) — that keeps
+        # the validator usable from an unbootstrapped checkout.
+        if KNOWN_HOOKS:
+            hook_id = evaluator["hook"]
+            _ensure(
+                hook_id in KNOWN_HOOKS,
+                f"{ctx}: hook_event_fired references unknown hook {hook_id!r}; "
+                f"known hooks (stems of station/agent/Sensors/*.sh): "
+                f"{sorted(KNOWN_HOOKS)}",
+            )
     elif check in {"tool_call_made", "tool_call_not_made"}:
         _ensure(
             isinstance(evaluator.get("tool"), str) and evaluator["tool"],
@@ -241,6 +273,34 @@ def validate_scenario(path: Path) -> dict[str, Any]:
                 isinstance(fix, dict),
                 f"{path}: `setup.fixtures[{i}]` must be a mapping",
             )
+    if "files" in setup:
+        _ensure(
+            isinstance(setup["files"], list),
+            f"{path}: `setup.files` must be a list when present",
+        )
+        for i, entry in enumerate(setup["files"]):
+            ctx = f"{path}:setup.files[{i}]"
+            _ensure(isinstance(entry, dict), f"{ctx}: must be a mapping")
+            file_path = entry.get("path")
+            _ensure(
+                isinstance(file_path, str) and file_path,
+                f"{ctx}: `path` must be a non-empty string",
+            )
+            # Path safety: workspace-relative only. Reject absolute paths and
+            # any segment that climbs out of the workspace via `..`.
+            assert isinstance(file_path, str)  # narrowed by _ensure above
+            _ensure(
+                not file_path.startswith("/"),
+                f"{ctx}: `path` must be workspace-relative, not absolute (got {file_path!r})",
+            )
+            _ensure(
+                ".." not in Path(file_path).parts,
+                f"{ctx}: `path` may not contain `..` traversal segments (got {file_path!r})",
+            )
+            _ensure(
+                isinstance(entry.get("content"), str),
+                f"{ctx}: `content` must be a string (got {type(entry.get('content')).__name__})",
+            )
 
     evaluators = data["evaluators"]
     _ensure(
@@ -253,6 +313,28 @@ def validate_scenario(path: Path) -> dict[str, Any]:
     # `data` is already known to be `dict[str, Any]` from the earlier
     # `isinstance(data, dict)` check; mypy can't narrow through `_ensure`.
     return dict(data)
+
+
+def scenario_warnings(data: dict[str, Any], path: Path) -> list[str]:
+    """Return non-fatal warnings for a validated scenario.
+
+    Warnings are advisory and never fail validation; `check_all` surfaces
+    them on stderr so authors notice judge-only scenarios but can opt in
+    explicitly. Per F-adv-5: at least one deterministic evaluator is the
+    authoring convention, but judge-only scenarios are allowed.
+    """
+    warnings: list[str] = []
+    evaluators = data.get("evaluators", []) or []
+    has_deterministic = any(
+        isinstance(ev, dict) and ev.get("type") == "deterministic" for ev in evaluators
+    )
+    if not has_deterministic:
+        warnings.append(
+            f"{path}: no `deterministic` evaluator — scenario relies entirely on "
+            f"test_based / llm_judge signal. Consider adding a cheap "
+            f"deterministic check (see SCHEMA.md authoring guidelines)."
+        )
+    return warnings
 
 
 def discover_scenarios(root: Path) -> list[Path]:
@@ -271,6 +353,23 @@ def check_all(root: Path) -> list[tuple[Path, str]]:
         except ScenarioValidationError as exc:
             failures.append((path, str(exc)))
     return failures
+
+
+def collect_warnings(root: Path) -> list[str]:
+    """Walk every (validatable) scenario under `root` and collect advisory warnings.
+
+    Scenarios that fail structural validation are skipped — `check_all`
+    already reports those. Warnings are non-fatal: callers may print them
+    but should not exit non-zero on warnings alone.
+    """
+    out: list[str] = []
+    for path in discover_scenarios(root):
+        try:
+            data = validate_scenario(path)
+        except ScenarioValidationError:
+            continue
+        out.extend(scenario_warnings(data, path))
+    return out
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -300,6 +399,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    warnings = collect_warnings(args.scenarios_dir)
+    for w in warnings:
+        print(f"WARN {w}", file=sys.stderr)
 
     print(f"check_scenarios: {len(scenarios)} scenarios OK")
     return 0

@@ -59,6 +59,31 @@ setup:
 |-------|------|----------|-------------|
 | `workspace_template` | string | yes | Bonsai catalog **agent** name (e.g. `tech-lead`, `backend`, `security`). The rung-3 solver materializes this workspace via `bonsai init --non-interactive --from-config`. Rungs 1 and 2 ignore this field (no workspace exists at those rungs). See [Rung semantics](#rung-specific-semantics). |
 | `fixtures` | list[object] | optional | Each entry is `{bonsai_config: <fixture-name>}` pointing to `tests/fixtures/bonsai_configs/<name>.yaml`. **TODO:** the `tests/fixtures/bonsai_configs/` directory does not yet exist — it lands with the rung-3 solver work in §P2.4. Until then, the validator just type-checks the field; runtime resolution is a follow-up. |
+| `files` | list[object] | optional | Pre-staged workspace files materialized by the **rung-3 solver** after `bonsai init` but before the agent turn. Each entry is `{path: <workspace-relative path>, content: <string>}`. Use this when a scenario assumes a plan, report, or KeyDecisionLog entry already exists on disk. Rungs 1 and 2 ignore this field (no workspace exists). See [Pre-staged files](#pre-staged-files-setupfiles) below. |
+
+### Pre-staged files (`setup.files`)
+
+```yaml
+setup:
+  workspace_template: tech-lead
+  fixtures:
+    - bonsai_config: minimal
+  files:
+    - path: station/Playbook/Plans/Active/51-rename-cli-flag.md
+      content: |
+        ---
+        tags: [plan]
+        ---
+        # Plan 51 — rename --legacy-flag to --legacy
+        Tier-1. Three steps. Verification: lint + tests clean.
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | yes | Workspace-relative path (relative to the materialized workspace root). Absolute paths (`/...`) and any segment containing `..` are **rejected** by the validator to prevent traversal out of the sandbox. |
+| `content` | string | yes | The file's contents, written verbatim by the rung-3 solver after `bonsai init` completes. Use YAML's `|` literal block for multi-line strings. |
+
+**Rung consequence.** Only the rung-3 solver materializes `setup.files`. Rungs 1 and 2 ignore the field — they don't have a workspace to write into — which means scenarios that depend on pre-staged files will produce **structurally different signal** at lower rungs (the agent can't read what isn't there). This is acceptable per the rung semantics below: the per-rung pass-rate gap is itself the measurement.
 
 > [!note]
 > **`workspace_template` naming.** The plan example used `tech-lead-minimal`, but
@@ -87,7 +112,7 @@ model call. Cheap.
 | `path` | string | for `file_*`; for `tool_call_*` when `tool != Bash` | Absolute or workspace-relative path. For `tool_call_*` checks where `tool != Bash`, this is the path argument the tool must have (not) been called with — **substring match** against the tool-call's path argument. |
 | `command` | string | for `tool_call_*` when `tool == Bash` | The Claude/Inspect `Bash` tool takes a `command` argument, not a `path`. For `tool_call_*` evaluators with `tool: Bash`, use `command` (substring match against the bash command string). Setting `path` on a `Bash` `tool_call_*` evaluator is a validation error (the path field does not exist on the Bash tool). |
 | `pattern` | string | for `file_contains` | Regex; the post-run file must match. |
-| `hook` | string | for `hook_event_fired` | Hook id (e.g. `scope-guard-files`); the run's transcript JSONL must contain a `hook_event_name` matching this hook. |
+| `hook` | string | for `hook_event_fired` | Hook id (e.g. `scope-guard-files`); the run's transcript JSONL must contain a `hook_event_name` matching this hook. The hook id MUST match a sensor filename stem under `station/agent/Sensors/*.sh` (validated). For deny-style hooks (e.g. `scope-guard-files`), this check **is** the discriminative signal: the hook only fires when the agent attempts the blocked action, so `hook_event_fired` separates "tried and was blocked" from "didn't try" — pair it with a strict llm_judge rubric on the agent's *explanation*, and skip redundant `tool_call_not_made` checks. |
 | `tool` | string | for `tool_call_*` | Tool name (e.g. `Read`, `Edit`, `Bash`, `Task`). |
 
 > **`path` vs `command` for `tool_call_*`.** The match argument depends on the
@@ -98,6 +123,18 @@ model call. Cheap.
 > other tool requires `path` (when matching is desired) and rejects `command`.
 > Both fields use **substring** matching against the corresponding tool-call
 > argument captured in the transcript.
+
+> **`tool_call_made` / `tool_call_not_made` semantics — blocked calls count.**
+> `tool_call_made` is true iff the transcript contains **at least one
+> ATTEMPTED** call to the named tool matching the given `path`/`command`
+> substring, *including attempts that were blocked by a PreToolUse hook*. The
+> rung-3 P2.3 scorer reads the Inspect tool-call log (and, when needed, the
+> sensor hook JSONL), both of which record the attempt before any hook gets a
+> chance to deny it. `tool_call_not_made` is the negation: true iff **no such
+> attempted call** exists in the transcript. This matters for scope-boundary
+> scenarios: an agent that *tries* to edit a guarded path and gets hard-blocked
+> by `scope-guard-files` is still observably distinct from an agent that never
+> tried — and the schema makes that distinction load-bearing.
 
 ### `type: test_based`
 

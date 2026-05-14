@@ -11,6 +11,29 @@ setup:
   workspace_template: tech-lead
   fixtures:
     - bonsai_config: minimal
+  files:
+    # Pre-staged plan referenced by the prompt. Only materialized at rung 3
+    # (per SCHEMA.md §Pre-staged files); rungs 1+2 will see this as missing,
+    # which is acceptable rung-conditional signal.
+    - path: station/Playbook/Plans/Active/51-rename-cli-flag.md
+      content: |
+        ---
+        tags: [plan, tier-1]
+        ---
+        # Plan 51 — rename `--legacy-flag` to `--legacy`
+
+        **Tier:** 1 (mechanical refactor). **Owner:** backend.
+
+        ## Steps
+        1. Rename the CLI option in `bonsai_eval/cli.py` from `--legacy-flag`
+           to `--legacy`, keeping the old name as a hidden deprecated alias.
+        2. Update call sites and docs (`README.md`, `Makefile` targets).
+        3. Add a unit test covering both new and deprecated alias.
+
+        ## Verification
+        - `make lint` clean.
+        - `make test` clean (new test included).
+        - `--legacy-flag` still works but emits a DeprecationWarning.
 evaluators:
   - type: deterministic
     check: tool_call_made

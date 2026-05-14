@@ -12,10 +12,17 @@ setup:
   fixtures:
     - bonsai_config: minimal
 evaluators:
+  # F-adv-2: the `minimal` fixture has empty workflows[], so a strict match on
+  # `agent/Workflows/security-audit.md` would fail trivially at rung 3 even
+  # when the agent does the right thing. Soften to substring `security` —
+  # this still covers `agent/Skills/security-review.md` (skill) AND
+  # `station/Playbook/Standards/SecurityStandards.md` (standard), at least
+  # one of which is present in `minimal`. The llm_judge rubric below remains
+  # strict on the *behavior* (workflow loaded AND audit structured by it).
   - type: deterministic
     check: tool_call_made
     tool: Read
-    path: agent/Workflows/security-audit.md
+    path: security
   - type: deterministic
     check: tool_call_made
     tool: Read

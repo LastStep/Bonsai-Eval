@@ -157,3 +157,89 @@ def test_validator_rejects_bash_tool_call_with_path(tmp_path: Path) -> None:
     with pytest.raises(CHECK.ScenarioValidationError) as exc_info_2:  # type: ignore[attr-defined]
         CHECK.validate_scenario(wrong_tool_path)  # type: ignore[attr-defined]
     assert "command" in str(exc_info_2.value)
+
+
+# --- F-adv-6: validator coverage for the second-amend additions ---
+
+
+def _make_base_scenario(scenario_id: str) -> dict[str, object]:
+    """Minimal valid scenario skeleton used by the F-adv-6 tests."""
+    return {
+        "id": scenario_id,
+        "description": "Synthetic scenario for validator tests.",
+        "category": "plan-gating",
+        "prompt": "stub prompt",
+        "setup": {
+            "workspace_template": "tech-lead",
+            "fixtures": [{"bonsai_config": "minimal"}],
+        },
+        "evaluators": [
+            {
+                "type": "deterministic",
+                "check": "file_exists",
+                "path": "station/Playbook/Plans/Active/51-rename-cli-flag.md",
+            }
+        ],
+    }
+
+
+def test_validator_accepts_files_fixture(tmp_path: Path) -> None:
+    """F-adv-6: `setup.files[]` with valid `path` + `content` is accepted."""
+    import yaml as _yaml
+
+    scenario = _make_base_scenario("good-files-entry")
+    setup_obj = scenario["setup"]
+    assert isinstance(setup_obj, dict)
+    setup_obj["files"] = [
+        {
+            "path": "station/Playbook/Plans/Active/51-rename-cli-flag.md",
+            "content": "# Plan 51\nTier-1 mechanical refactor.\n",
+        }
+    ]
+    p = tmp_path / "good-files-entry.yaml"
+    p.write_text(_yaml.safe_dump(scenario), encoding="utf-8")
+    CHECK.validate_scenario(p)  # type: ignore[attr-defined]  # must not raise
+
+
+def test_validator_rejects_files_path_with_parent_traversal(tmp_path: Path) -> None:
+    """F-adv-6: paths containing `..` are rejected (sandbox escape guard)."""
+    import yaml as _yaml
+
+    scenario = _make_base_scenario("bad-files-traversal")
+    setup_obj = scenario["setup"]
+    assert isinstance(setup_obj, dict)
+    setup_obj["files"] = [{"path": "../etc/passwd", "content": "root::0:0::/root:/bin/sh\n"}]
+    p = tmp_path / "bad-files-traversal.yaml"
+    p.write_text(_yaml.safe_dump(scenario), encoding="utf-8")
+    with pytest.raises(CHECK.ScenarioValidationError) as exc_info:  # type: ignore[attr-defined]
+        CHECK.validate_scenario(p)  # type: ignore[attr-defined]
+    assert ".." in str(exc_info.value) or "traversal" in str(exc_info.value)
+
+
+def test_validator_rejects_unknown_hook_name(tmp_path: Path) -> None:
+    """F-adv-6: a `hook_event_fired.hook` value not matching any sensor stem
+    under `station/agent/Sensors/*.sh` is rejected with a clear message.
+    """
+    import yaml as _yaml
+
+    # Skip if the validator couldn't discover any sensor hooks (e.g.
+    # running from an unbootstrapped checkout) — the cross-check is a no-op
+    # in that mode by design.
+    if not CHECK.KNOWN_HOOKS:  # type: ignore[attr-defined]
+        pytest.skip("no sensor hooks discovered; hook-name cross-check disabled")
+
+    scenario = _make_base_scenario("bad-unknown-hook")
+    scenario["evaluators"] = [
+        {
+            "type": "deterministic",
+            "check": "hook_event_fired",
+            # Typo of a real hook name — must be rejected.
+            "hook": "scope-guard-fil",
+        }
+    ]
+    p = tmp_path / "bad-unknown-hook.yaml"
+    p.write_text(_yaml.safe_dump(scenario), encoding="utf-8")
+    with pytest.raises(CHECK.ScenarioValidationError) as exc_info:  # type: ignore[attr-defined]
+        CHECK.validate_scenario(p)  # type: ignore[attr-defined]
+    msg = str(exc_info.value)
+    assert "unknown hook" in msg and "scope-guard-fil" in msg

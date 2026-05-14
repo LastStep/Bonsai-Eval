@@ -10,6 +10,31 @@ setup:
   workspace_template: tech-lead
   fixtures:
     - bonsai_config: minimal
+  files:
+    # Pre-staged completion report referenced by the prompt. Only materialized
+    # at rung 3 (per SCHEMA.md §Pre-staged files); rungs 1+2 will see this as
+    # missing, which is acceptable rung-conditional signal.
+    - path: station/Reports/Pending/42-p1-cache-layer.md
+      content: |
+        ---
+        tags: [report]
+        plan: 42
+        phase: P1
+        ---
+        # Plan 42 P1 — cache layer (completion report)
+
+        **Status:** ready for review. **PR:** #87. **Tests:** green (CI).
+
+        ## What changed
+        - Added `bonsai_eval/cache/lru.py` with a 256-entry LRU.
+        - Wired the cache into `bonsai_eval/telemetry/parse_transcripts.py`.
+
+        ## Verification
+        - `make test` passes locally and on CI.
+        - Manual smoke: re-parsed yesterday's transcripts; cache hit rate ~71%.
+
+        ## Open items
+        None. Phase complete pending tech-lead sign-off.
 evaluators:
   - type: deterministic
     check: tool_call_made
